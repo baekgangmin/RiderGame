@@ -8,8 +8,14 @@ public class PickupZone : MonoBehaviour
     [Header("픽업에 걸리는 시간(초)")]
     public float holdDuration = 3f;
 
-    [Header("픽업 후 배달 제한시간(초) - 나중에 거리 비례로 자동 계산 예정")]
-    public float deliveryTimeLimit = 30f;
+    [Header("배달 제한시간 계산 (거리 기반)")]
+    public Transform deliveryPoint; // 배달지 Transform - TownGenerator가 자동으로 연결해줌 (직접 드래그해도 됨)
+    public float speedEstimateForTimeLimit = 5f; // 제한시간 계산에 쓸 예상 이동 속도
+    public float pathFactor = 1.4f; // 직선거리 대비 실제 이동 경로 보정 배수 (건물 사이로 돌아가는 것 감안)
+    public float bufferSeconds = 8f; // 여유 시간
+
+    [Header("deliveryPoint가 비어있을 때 쓸 고정 제한시간(초)")]
+    public float fallbackTimeLimit = 30f;
 
     [Header("플레이어 태그")]
     public string playerTag = "Player";
@@ -73,7 +79,15 @@ public class PickupZone : MonoBehaviour
     void CompletePickup()
     {
         pickedUp = true;
+
+        float limit = fallbackTimeLimit;
+        if (deliveryPoint != null)
+        {
+            float distance = Vector3.Distance(transform.position, deliveryPoint.position);
+            limit = (distance / speedEstimateForTimeLimit) * pathFactor + bufferSeconds;
+        }
+
         Debug.Log("픽업 완료! 이제 배달지로 이동하세요.");
-        DeliveryManager.StartDelivery(deliveryTimeLimit);
+        DeliveryManager.StartDelivery(limit);
     }
 }

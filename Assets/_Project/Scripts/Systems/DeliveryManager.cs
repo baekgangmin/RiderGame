@@ -4,13 +4,27 @@ using UnityEngine;
 public static class DeliveryManager
 {
     public static bool HasFood { get; private set; }
+    public static int Money { get; private set; }
 
     private static float pickupTime;
     private static float timeLimit;
 
+    // 폰 UI에서 남은 시간 표시할 때 사용
+    public static float RemainingTime
+    {
+        get
+        {
+            if (!HasFood)
+            {
+                return 0f;
+            }
+            return Mathf.Max(0f, timeLimit - (Time.time - pickupTime));
+        }
+    }
+
     [Header("정산 설정")]
     public static int baseFare = 5000;           // 기본 배달비(원)
-    public static float latePenaltyPerSecond = 100f; // 지각 1초당 차감(원)
+    public static float latePenaltyPerSecond = 100f; // 지각 1초당 차감(원) - 배달비를 넘으면 보유 금액에서 추가로 차감됨
 
     public static void StartDelivery(float limitSeconds)
     {
@@ -31,15 +45,21 @@ public static class DeliveryManager
         float elapsed = Time.time - pickupTime;
         float lateSeconds = Mathf.Max(0f, elapsed - timeLimit);
         int deduction = Mathf.RoundToInt(lateSeconds * latePenaltyPerSecond);
-        int payout = Mathf.Max(0, baseFare - deduction);
+        int payout = baseFare - deduction; // 많이 늦으면 음수가 될 수 있음 -> 내 돈에서 차감
+
+        Money += payout;
 
         if (lateSeconds <= 0f)
         {
-            Debug.Log($"정시 도착! 소요시간 {elapsed:F1}초 → 배달비 {payout}원 지급");
+            Debug.Log($"정시 도착! 소요시간 {elapsed:F1}초 → 배달비 {payout}원 지급 (보유 금액: {Money}원)");
+        }
+        else if (payout >= 0)
+        {
+            Debug.Log($"지각 {lateSeconds:F1}초! 배달비 {baseFare}원에서 {deduction}원 차감 → {payout}원 지급 (보유 금액: {Money}원)");
         }
         else
         {
-            Debug.Log($"지각 {lateSeconds:F1}초! 배달비 {baseFare}원에서 {deduction}원 차감 → {payout}원 지급");
+            Debug.Log($"많이 늦었어요! 배달비를 넘는 {-payout}원을 내 돈에서 차감 (보유 금액: {Money}원)");
         }
 
         HasFood = false;
