@@ -1,0 +1,31 @@
+# Git LFS 설정 - 배달 라이더 게임
+# 사용 전 한 번만: git lfs install
+
+# 3D 모델 (VARCO 3D 출력물 포함)
+*.fbx filter=lfs diff=lfs merge=lfs -text
+*.obj filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text
+*.glb filter=lfs diff=lfs merge=lfs -text
+*.gltf filter=lfs diff=lfs merge=lfs -text
+
+# 텍스처 / 이미지
+*.png filter=lfs diff=lfs merge=lfs -text
+*.psd filter=lfs diff=lfs merge=lfs -text
+*.tga filter=lfs diff=lfs merge=lfs -text
+*.tif filter=lfs diff=lfs merge=lfs -text
+*.exr filter=lfs diff=lfs merge=lfs -text
+
+# 오디오
+*.wav filter=lfs diff=lfs merge=lfs -text
+*.mp3 filter=lfs diff=lfs merge=lfs -text
+*.ogg filter=lfs diff=lfs merge=lfs -text
+
+# 비디오
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+
+# Unity 에셋 번들 / 프리팹은 텍스트 기반(YAML)이라 LFS 제외하고
+# diff가 가능하도록 유지 (.prefab, .unity, .mat, .asset 등)
+*.prefab -text
+*.unity -text
+*.mat -text
+*.asset -text
