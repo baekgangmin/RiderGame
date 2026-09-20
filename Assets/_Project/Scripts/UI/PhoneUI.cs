@@ -1,16 +1,21 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
-// 핸드폰 UI (M6) - 실제 폰처럼 생긴 베젤 안에 목적지, 남은 시간, 보유 금액을 표시
-// 음식을 픽업한 상태(배달 중)일 때는 배달지 방향을 가리키는 내비게이션 화살표도 같이 보여줌
+// 핸드폰 UI (M6) - 실제 내비게이션처럼 미니맵을 보여주고, 새 배달 요청을 수락하는 화면
+// 플레이어 머리 위에서 내려다보는 카메라를 하나 더 만들어서 그 화면을 폰 화면에 그대로 띄움
+// 플레이어가 도는 방향에 맞춰 미니맵 카메라도 같이 돌아서 "항상 위쪽 = 내가 보는 방향"이 되게 함
+// 배달 마커(기둥)는 위에서 보면 자연스럽게 목적지 점(핀)처럼 보임
 public class PhoneUI : MonoBehaviour
 {
-    private Text destinationText;
+    private Text statusText;
     private Text timeText;
     private Text moneyText;
-    private RectTransform arrowRect;
+    private GameObject acceptButtonGO;
 
     private Transform player;
+    private Camera minimapCamera;
+    private RenderTexture minimapTexture;
 
     void Start()
     {
@@ -20,7 +25,19 @@ public class PhoneUI : MonoBehaviour
             player = playerGO.transform;
         }
 
+        EnsureEventSystem();
         BuildUI();
+    }
+
+    void EnsureEventSystem()
+    {
+        // 버튼 클릭이 동작하려면 씬에 EventSystem이 하나 있어야 함
+        if (Object.FindFirstObjectByType<EventSystem>() == null)
+        {
+            GameObject esGO = new GameObject("EventSystem");
+            esGO.AddComponent<EventSystem>();
+            esGO.AddComponent<StandaloneInputModule>();
+        }
     }
 
     void BuildUI()
@@ -86,28 +103,98 @@ public class PhoneUI : MonoBehaviour
             font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         }
 
-        destinationText = CreateLabel(screenGO.transform, font, "목적지: -", 110f, 16);
-        timeText = CreateLabel(screenGO.transform, font, "남은 시간: -", 75f, 16);
-        moneyText = CreateLabel(screenGO.transform, font, "보유 금액: 0원", 40f, 16);
+        BuildMinimap(screenGO.transform, font);
 
-        // 배달 중일 때만 보이는 내비게이션 화살표 (배달지 방향을 가리킴)
-        GameObject arrowGO = new GameObject("NavArrow");
-        arrowGO.transform.SetParent(screenGO.transform, false);
-        Text arrowText = arrowGO.AddComponent<Text>();
-        arrowText.font = font;
-        arrowText.fontSize = 48;
-        arrowText.color = new Color(0.3f, 0.9f, 0.4f);
-        arrowText.text = "▲";
-        arrowText.alignment = TextAnchor.MiddleCenter;
+        statusText = CreateLabel(screenGO.transform, font, "-", -25f, 14);
+        timeText = CreateLabel(screenGO.transform, font, "남은 시간: -", -55f, 14);
+        moneyText = CreateLabel(screenGO.transform, font, "보유 금액: 0원", -85f, 14);
 
-        arrowRect = arrowGO.GetComponent<RectTransform>();
-        arrowRect.anchorMin = new Vector2(0.5f, 0.5f);
-        arrowRect.anchorMax = new Vector2(0.5f, 0.5f);
-        arrowRect.pivot = new Vector2(0.5f, 0.5f);
-        arrowRect.anchoredPosition = new Vector2(0f, -70f);
-        arrowRect.sizeDelta = new Vector2(60f, 60f);
+        BuildAcceptButton(screenGO.transform, font);
+    }
 
-        arrowGO.SetActive(false);
+    void BuildMinimap(Transform parent, Font font)
+    {
+        GameObject mapGO = new GameObject("MinimapImage");
+        mapGO.transform.SetParent(parent, false);
+        RawImage rawImage = mapGO.AddComponent<RawImage>();
+
+        RectTransform mapRect = mapGO.GetComponent<RectTransform>();
+        mapRect.anchorMin = new Vector2(0.5f, 0.5f);
+        mapRect.anchorMax = new Vector2(0.5f, 0.5f);
+        mapRect.pivot = new Vector2(0.5f, 0.5f);
+        mapRect.anchoredPosition = new Vector2(0f, 60f);
+        mapRect.sizeDelta = new Vector2(140f, 140f);
+
+        // 미니맵 카메라 - 플레이어 머리 위에서 내려다보고, 그 화면을 렌더텍스처로 뽑아서 위 RawImage에 표시
+        GameObject camGO = new GameObject("MinimapCamera");
+        minimapCamera = camGO.AddComponent<Camera>();
+        minimapCamera.orthographic = true;
+        minimapCamera.orthographicSize = 35f;
+        minimapCamera.nearClipPlane = 1f;
+        minimapCamera.farClipPlane = 120f;
+        minimapCamera.clearFlags = CameraClearFlags.SolidColor;
+        minimapCamera.backgroundColor = new Color(0.05f, 0.16f, 0.09f);
+
+        minimapTexture = new RenderTexture(256, 256, 16);
+        minimapCamera.targetTexture = minimapTexture;
+        rawImage.texture = minimapTexture;
+
+        // 지도 위에 고정으로 떠 있는 "나(플레이어)" 아이콘 - 지도 자체가 플레이어 방향에 맞춰 돌기 때문에 항상 위쪽을 향함
+        GameObject iconGO = new GameObject("PlayerIcon");
+        iconGO.transform.SetParent(mapGO.transform, false);
+        Text iconText = iconGO.AddComponent<Text>();
+        iconText.font = font;
+        iconText.fontSize = 22;
+        iconText.color = Color.white;
+        iconText.text = "▲";
+        iconText.alignment = TextAnchor.MiddleCenter;
+
+        RectTransform iconRect = iconGO.GetComponent<RectTransform>();
+        iconRect.anchorMin = new Vector2(0.5f, 0.5f);
+        iconRect.anchorMax = new Vector2(0.5f, 0.5f);
+        iconRect.pivot = new Vector2(0.5f, 0.5f);
+        iconRect.anchoredPosition = Vector2.zero;
+        iconRect.sizeDelta = new Vector2(30f, 30f);
+    }
+
+    void BuildAcceptButton(Transform parent, Font font)
+    {
+        acceptButtonGO = new GameObject("AcceptButton");
+        acceptButtonGO.transform.SetParent(parent, false);
+
+        Image btnImage = acceptButtonGO.AddComponent<Image>();
+        btnImage.color = new Color(0.25f, 0.85f, 0.35f);
+
+        Button button = acceptButtonGO.AddComponent<Button>();
+        button.onClick.AddListener(() =>
+        {
+            if (DeliveryJobManager.Instance != null)
+            {
+                DeliveryJobManager.Instance.AcceptJob();
+            }
+        });
+
+        RectTransform btnRect = acceptButtonGO.GetComponent<RectTransform>();
+        btnRect.anchorMin = new Vector2(0.5f, 0.5f);
+        btnRect.anchorMax = new Vector2(0.5f, 0.5f);
+        btnRect.pivot = new Vector2(0.5f, 0.5f);
+        btnRect.anchoredPosition = new Vector2(0f, -115f);
+        btnRect.sizeDelta = new Vector2(100f, 36f);
+
+        GameObject labelGO = new GameObject("Label");
+        labelGO.transform.SetParent(acceptButtonGO.transform, false);
+        Text label = labelGO.AddComponent<Text>();
+        label.font = font;
+        label.fontSize = 18;
+        label.color = Color.black;
+        label.text = "수락";
+        label.alignment = TextAnchor.MiddleCenter;
+
+        RectTransform labelRect = labelGO.GetComponent<RectTransform>();
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
     }
 
     Text CreateLabel(Transform parent, Font font, string initialText, float y, int fontSize)
@@ -128,42 +215,45 @@ public class PhoneUI : MonoBehaviour
         rect.anchorMax = new Vector2(1f, 0.5f);
         rect.pivot = new Vector2(0.5f, 0.5f);
         rect.anchoredPosition = new Vector2(0f, y);
-        rect.sizeDelta = new Vector2(-16f, 34f);
+        rect.sizeDelta = new Vector2(-16f, 26f);
 
         return text;
     }
 
     void Update()
     {
-        UpdateDestination();
+        DeliveryJobManager manager = DeliveryJobManager.Instance;
+        UpdateStatus(manager);
         UpdateTime();
         UpdateMoney();
-        UpdateArrow();
+        UpdateAcceptButton(manager);
+        UpdateMinimap();
     }
 
-    void UpdateDestination()
+    void UpdateStatus(DeliveryJobManager manager)
     {
-        if (destinationText == null)
+        if (statusText == null)
         {
             return;
         }
 
-        DeliveryJobManager manager = DeliveryJobManager.Instance;
         if (manager == null)
         {
-            destinationText.text = "목적지: -";
+            statusText.text = "-";
             return;
         }
 
-        if (DeliveryManager.HasFood)
+        switch (manager.State)
         {
-            string name = manager.CurrentDeliverySpot != null ? manager.CurrentDeliverySpot.name : "-";
-            destinationText.text = "배달지: " + name;
-        }
-        else
-        {
-            string name = manager.CurrentPickupSpot != null ? manager.CurrentPickupSpot.name : "-";
-            destinationText.text = "픽업 장소: " + name;
+            case DeliveryJobManager.JobState.Proposed:
+                statusText.text = "새 배달 요청 도착!";
+                break;
+            case DeliveryJobManager.JobState.GoingToPickup:
+                statusText.text = "픽업 장소: " + (manager.CurrentPickupSpot != null ? manager.CurrentPickupSpot.name : "-");
+                break;
+            case DeliveryJobManager.JobState.GoingToDelivery:
+                statusText.text = "배달지: " + (manager.CurrentDeliverySpot != null ? manager.CurrentDeliverySpot.name : "-");
+                break;
         }
     }
 
@@ -194,32 +284,31 @@ public class PhoneUI : MonoBehaviour
         moneyText.text = "보유 금액: " + DeliveryManager.Money + "원";
     }
 
-    void UpdateArrow()
+    void UpdateAcceptButton(DeliveryJobManager manager)
     {
-        if (arrowRect == null)
+        if (acceptButtonGO == null)
         {
             return;
         }
 
-        bool shouldShowArrow = DeliveryManager.HasFood && player != null
-            && DeliveryJobManager.Instance != null
-            && DeliveryJobManager.Instance.CurrentDeliverySpot != null;
-
-        if (arrowRect.gameObject.activeSelf != shouldShowArrow)
+        bool shouldShow = manager != null && manager.State == DeliveryJobManager.JobState.Proposed;
+        if (acceptButtonGO.activeSelf != shouldShow)
         {
-            arrowRect.gameObject.SetActive(shouldShowArrow);
+            acceptButtonGO.SetActive(shouldShow);
         }
+    }
 
-        if (!shouldShowArrow)
+    void UpdateMinimap()
+    {
+        if (minimapCamera == null || player == null)
         {
             return;
         }
 
-        // 플레이어 기준 로컬 좌표로 목적지를 변환해서 화살표가 가리킬 각도를 계산
-        Vector3 targetPos = DeliveryJobManager.Instance.CurrentDeliverySpot.transform.position;
-        Vector3 localTarget = player.InverseTransformPoint(targetPos);
-        float angleDeg = Mathf.Atan2(localTarget.x, localTarget.z) * Mathf.Rad2Deg;
-
-        arrowRect.localEulerAngles = new Vector3(0f, 0f, -angleDeg);
+        // 플레이어 머리 위에서 수직으로 내려다보고, 플레이어가 도는 방향에 맞춰 지도도 같이 회전
+        Vector3 pos = player.position;
+        pos.y += 60f;
+        minimapCamera.transform.position = pos;
+        minimapCamera.transform.rotation = Quaternion.Euler(90f, player.eulerAngles.y, 0f);
     }
 }

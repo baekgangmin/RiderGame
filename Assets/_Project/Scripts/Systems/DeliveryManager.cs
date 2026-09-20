@@ -26,6 +26,19 @@ public static class DeliveryManager
     public static int baseFare = 5000;           // 기본 배달비(원)
     public static float latePenaltyPerSecond = 100f; // 지각 1초당 차감(원) - 배달비를 넘으면 보유 금액에서 추가로 차감됨
 
+    // 유니티 에디터의 "Enter Play Mode Options"에서 Reload Domain이 꺼져 있으면
+    // static 필드가 이전 플레이 세션 값을 그대로 들고 다음 플레이가 시작될 수 있음
+    // (예: 이전에 픽업만 해두고 배달 전에 멈추면, 다음 Play를 누르자마자 시간이 이미 흐르고 있는 것처럼 보임)
+    // Play를 누를 때마다(씬이 로드될 때마다) 항상 깨끗한 상태로 시작하도록 강제 초기화
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void ResetOnPlayStart()
+    {
+        HasFood = false;
+        Money = 0;
+        pickupTime = 0f;
+        timeLimit = 0f;
+    }
+
     public static void StartDelivery(float limitSeconds)
     {
         HasFood = true;

@@ -26,6 +26,8 @@ public class DeliverySpot : MonoBehaviour
 
     private GameObject marker;
     private Renderer markerRenderer;
+    private GameObject blip;
+    private Renderer blipRenderer;
     private float holdTimer;
     private bool playerInZone;
 
@@ -46,11 +48,14 @@ public class DeliverySpot : MonoBehaviour
 
     void CreateMarker()
     {
-        marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+
+        // 작은 구슬 대신 땅에서 하늘까지 이어지는 기둥(빔)으로 만들어서 건물 사이에서도 멀리서 눈에 띄게 함
+        marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         marker.name = "Marker";
         marker.transform.SetParent(transform);
-        marker.transform.localPosition = new Vector3(0f, 10f, 0f);
-        marker.transform.localScale = Vector3.one * 2.5f;
+        marker.transform.localPosition = new Vector3(0f, 15f, 0f);
+        marker.transform.localScale = new Vector3(0.8f, 15f, 0.8f);
 
         Collider markerCol = marker.GetComponent<Collider>();
         if (markerCol != null)
@@ -59,14 +64,33 @@ public class DeliverySpot : MonoBehaviour
         }
 
         markerRenderer = marker.GetComponent<Renderer>();
-
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader != null)
         {
             markerRenderer.material = new Material(shader);
         }
 
+        // 미니맵 전용 큰 원반(blip) - 기둥 꼭대기에 납작하게 붙여서 위에서 내려다보면 크게 찍히지만
+        // 3인칭 카메라에서 옆에서 보면 두께가 거의 없어 눈에 거슬리지 않음
+        blip = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        blip.name = "MapBlip";
+        blip.transform.SetParent(transform);
+        blip.transform.localPosition = new Vector3(0f, 30f, 0f);
+        blip.transform.localScale = new Vector3(5f, 0.15f, 5f);
+
+        Collider blipCol = blip.GetComponent<Collider>();
+        if (blipCol != null)
+        {
+            Destroy(blipCol);
+        }
+
+        blipRenderer = blip.GetComponent<Renderer>();
+        if (shader != null)
+        {
+            blipRenderer.material = new Material(shader);
+        }
+
         marker.SetActive(false);
+        blip.SetActive(false);
     }
 
     public void SetRole(SpotRole role)
@@ -83,19 +107,46 @@ public class DeliverySpot : MonoBehaviour
         if (role == SpotRole.Inactive)
         {
             marker.SetActive(false);
+            if (blip != null)
+            {
+                blip.SetActive(false);
+            }
             return;
         }
 
         marker.SetActive(true);
-        Color c = role == SpotRole.Pickup ? pickupColor : deliveryColor;
-
-        if (markerRenderer != null && markerRenderer.material.HasProperty("_BaseColor"))
+        if (blip != null)
         {
-            markerRenderer.material.SetColor("_BaseColor", c);
+            blip.SetActive(true);
         }
-        else if (markerRenderer != null)
+
+        Color c = role == SpotRole.Pickup ? pickupColor : deliveryColor;
+        ApplyColor(markerRenderer, c);
+        ApplyColor(blipRenderer, c);
+    }
+
+    private void ApplyColor(Renderer targetRenderer, Color c)
+    {
+        if (targetRenderer == null)
         {
-            markerRenderer.material.color = c;
+            return;
+        }
+
+        Material mat = targetRenderer.material;
+        if (mat.HasProperty("_BaseColor"))
+        {
+            mat.SetColor("_BaseColor", c);
+        }
+        else
+        {
+            mat.color = c;
+        }
+
+        // 더 눈에 띄도록 살짝 발광 처리
+        if (mat.HasProperty("_EmissionColor"))
+        {
+            mat.EnableKeyword("_EMISSION");
+            mat.SetColor("_EmissionColor", c * 1.5f);
         }
     }
 
@@ -118,7 +169,7 @@ public class DeliverySpot : MonoBehaviour
 
             if (DeliveryJobManager.Instance != null)
             {
-                DeliveryJobManager.Instance.AssignNewJob();
+                DeliveryJobManager.Instance.OnDelivered();
             }
         }
     }
@@ -141,7 +192,9 @@ public class DeliverySpot : MonoBehaviour
 
         if (Input.GetKey(KeyCode.Space))
         {
-            holdTimer += Time.deltaTime;
+            // 씬 로드 직후 등 한 프레임이 유독 길게 걸렸을 때 holdTimer가 한 번에 확 튀어서
+            // 스페이스바를 누르자마자 바로 완료돼버리는 걸 막기 위해 프레임당 증가량을 제한함
+            holdTimer += Mathf.Min(Time.deltaTime, 0.1f);
             float progress = Mathf.Clamp01(holdTimer / holdDuration);
             Debug.Log($"픽업 진행률: {progress * 100f:F0}%");
 
@@ -171,5 +224,10 @@ public class DeliverySpot : MonoBehaviour
         DeliveryManager.StartDelivery(limit);
 
         SetRole(SpotRole.Inactive);
+
+        if (DeliveryJobManager.Instance != null)
+        {
+            DeliveryJobManager.Instance.OnPickedUp();
+        }
     }
 }
