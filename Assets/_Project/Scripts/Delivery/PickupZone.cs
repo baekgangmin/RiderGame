@@ -23,6 +23,7 @@ public class PickupZone : MonoBehaviour
     private float holdTimer = 0f;
     private bool playerInZone = false;
     private bool pickedUp = false;
+    private Transform playerTransform;
 
     void Reset()
     {
@@ -37,6 +38,7 @@ public class PickupZone : MonoBehaviour
         {
             playerInZone = true;
             holdTimer = 0f;
+            playerTransform = other.transform;
         }
     }
 
@@ -46,6 +48,7 @@ public class PickupZone : MonoBehaviour
         {
             playerInZone = false;
             holdTimer = 0f;
+            HeadGaugeUI.Hide();
         }
     }
 
@@ -60,9 +63,12 @@ public class PickupZone : MonoBehaviour
         {
             holdTimer += Time.deltaTime;
 
-            // TODO: 여기서 UI 프로그레스바에 (holdTimer / holdDuration) 값을 연결하면 진행률이 보임
+            // 콘솔 대신 플레이어 머리 위에 진행률 게이지를 띄워서 바로 보이게 함
             float progress = Mathf.Clamp01(holdTimer / holdDuration);
-            Debug.Log($"픽업 진행률: {progress * 100f:F0}%");
+            if (playerTransform != null)
+            {
+                HeadGaugeUI.Show(playerTransform, progress, "픽업 중");
+            }
 
             if (holdTimer >= holdDuration)
             {
@@ -73,12 +79,14 @@ public class PickupZone : MonoBehaviour
         {
             // 키를 떼면 진행률 리셋
             holdTimer = 0f;
+            HeadGaugeUI.Hide();
         }
     }
 
     void CompletePickup()
     {
         pickedUp = true;
+        HeadGaugeUI.Hide();
 
         float limit = fallbackTimeLimit;
         if (deliveryPoint != null)

@@ -30,7 +30,7 @@ public class StaminaUI : MonoBehaviour
         bgRect.anchorMax = new Vector2(0f, 0f);
         bgRect.pivot = new Vector2(0f, 0f);
         bgRect.anchoredPosition = new Vector2(30f, 30f);
-        bgRect.sizeDelta = new Vector2(150f, 16f);
+        bgRect.sizeDelta = new Vector2(190f, 22f);
 
         GameObject fillGO = new GameObject("StaminaBarFill");
         fillGO.transform.SetParent(bgGO.transform, false);

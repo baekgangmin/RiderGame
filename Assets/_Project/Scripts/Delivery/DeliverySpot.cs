@@ -30,6 +30,7 @@ public class DeliverySpot : MonoBehaviour
     private Renderer blipRenderer;
     private float holdTimer;
     private bool playerInZone;
+    private Transform playerTransform;
 
     void Awake()
     {
@@ -161,6 +162,7 @@ public class DeliverySpot : MonoBehaviour
         {
             playerInZone = true;
             holdTimer = 0f;
+            playerTransform = other.transform;
         }
         else if (Role == SpotRole.Delivery && DeliveryManager.HasFood)
         {
@@ -180,6 +182,7 @@ public class DeliverySpot : MonoBehaviour
         {
             playerInZone = false;
             holdTimer = 0f;
+            HeadGaugeUI.Hide();
         }
     }
 
@@ -196,7 +199,12 @@ public class DeliverySpot : MonoBehaviour
             // 스페이스바를 누르자마자 바로 완료돼버리는 걸 막기 위해 프레임당 증가량을 제한함
             holdTimer += Mathf.Min(Time.deltaTime, 0.1f);
             float progress = Mathf.Clamp01(holdTimer / holdDuration);
-            Debug.Log($"픽업 진행률: {progress * 100f:F0}%");
+
+            // 콘솔 대신 플레이어 머리 위에 진행률 게이지를 띄워서 바로 보이게 함
+            if (playerTransform != null)
+            {
+                HeadGaugeUI.Show(playerTransform, progress, "픽업 중");
+            }
 
             if (holdTimer >= holdDuration)
             {
@@ -206,6 +214,7 @@ public class DeliverySpot : MonoBehaviour
         else
         {
             holdTimer = 0f;
+            HeadGaugeUI.Hide();
         }
     }
 
@@ -220,6 +229,7 @@ public class DeliverySpot : MonoBehaviour
             limit = (distance / speedEstimateForTimeLimit) * pathFactor + bufferSeconds;
         }
 
+        HeadGaugeUI.Hide();
         Debug.Log("픽업 완료! 이제 배달지로 이동하세요.");
         DeliveryManager.StartDelivery(limit);
 

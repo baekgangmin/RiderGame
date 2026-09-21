@@ -34,10 +34,13 @@ public static class DeliveryManager
     private static void ResetOnPlayStart()
     {
         HasFood = false;
-        Money = 0;
+        Money = startingMoney; // 테스트하기 편하게 시작 자금을 넉넉히 줌 - 나중에 밸런스 잡을 때 0으로 되돌리면 됨
         pickupTime = 0f;
         timeLimit = 0f;
     }
+
+    [Header("시작 자금 (테스트용)")]
+    public static int startingMoney = 200000;
 
     public static void StartDelivery(float limitSeconds)
     {
@@ -76,5 +79,22 @@ public static class DeliveryManager
         }
 
         HasFood = false;
+    }
+
+    // 상점(음료/탈것 구매 등)에서 사용 - 돈이 모자라면 아무 일도 안 하고 false 반환
+    public static bool SpendMoney(int amount)
+    {
+        if (amount <= 0)
+        {
+            return true;
+        }
+
+        if (Money < amount)
+        {
+            return false;
+        }
+
+        Money -= amount;
+        return true;
     }
 }

@@ -10,10 +10,44 @@ public class DeliveryJobManager : MonoBehaviour
 
     private static readonly List<DeliverySpot> spots = new List<DeliverySpot>();
 
+    [Header("콜 수락 제한시간(초) - 안 누르면 자동으로 다음 콜로 넘어감")]
+    public float offerTimeLimit = 15f;
+
+    private float offerStartTime;
+
     public JobState State { get; private set; } = JobState.Proposed;
 
     public DeliverySpot CurrentPickupSpot { get; private set; }
     public DeliverySpot CurrentDeliverySpot { get; private set; }
+
+    // 콜 수락까지 남은 시간 (Proposed 상태가 아니면 0)
+    public float OfferSecondsRemaining
+    {
+        get
+        {
+            if (State != JobState.Proposed)
+            {
+                return 0f;
+            }
+            return Mathf.Max(0f, offerTimeLimit - (Time.time - offerStartTime));
+        }
+    }
+
+    // 픽업지 -> 배달지 직선 거리(m) - 콜받기 화면에서 실제 라이더 앱처럼 표시할 때 사용
+    public float PickupToDeliveryDistance
+    {
+        get
+        {
+            if (CurrentPickupSpot == null || CurrentDeliverySpot == null)
+            {
+                return 0f;
+            }
+            return Vector3.Distance(CurrentPickupSpot.transform.position, CurrentDeliverySpot.transform.position);
+        }
+    }
+
+    // 위 거리를 대략적인 이동 속도로 환산한 예상 소요시간(초) - DeliverySpot의 제한시간 계산과 같은 기준(5m/s, 1.4배)을 사용
+    public float PickupToDeliveryEtaSeconds => (PickupToDeliveryDistance / 5f) * 1.4f;
 
     // "Enter Play Mode Options"에서 Reload Domain이 꺼져 있으면 static 필드(spots 목록)가
     // 이전 플레이 세션 것을 그대로 들고 다음 플레이로 넘어올 수 있음 - Play를 누를 때마다 항상 깨끗하게 초기화
@@ -32,6 +66,16 @@ public class DeliveryJobManager : MonoBehaviour
     void Start()
     {
         ProposeNewJob();
+    }
+
+    void Update()
+    {
+        // 콜을 제안받은 상태에서 제한시간 안에 수락하지 않으면 자동으로 다음 콜로 넘어감
+        if (State == JobState.Proposed && OfferSecondsRemaining <= 0f)
+        {
+            Debug.Log("콜 수락 시간이 지나 다음 콜로 넘어갑니다.");
+            ProposeNewJob();
+        }
     }
 
     public static void Register(DeliverySpot spot)
@@ -76,6 +120,7 @@ public class DeliveryJobManager : MonoBehaviour
         CurrentDeliverySpot = spots[deliveryIndex];
 
         State = JobState.Proposed;
+        offerStartTime = Time.time;
 
         Debug.Log("새 배달 요청 도착: " + CurrentPickupSpot.name + " -> " + CurrentDeliverySpot.name + " (핸드폰에서 수락하세요)");
     }
