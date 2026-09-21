@@ -398,7 +398,10 @@ public class PhoneUI : MonoBehaviour
     {
         CreateLabel(parent, "🚲 탈것", 145f, 15).alignment = TextAnchor.MiddleLeft;
 
-        float vy = 108f;
+        // 탈것 종류가 늘어날수록 목록이 길어지므로, 아래 음료 섹션 위치를 고정값 대신
+        // 이 목록이 끝나는 지점을 기준으로 계산해서 배치함 (안 그러면 탈것이 많아질 때 음료 목록과 겹침)
+        float vy = 112f;
+        const float vehicleRowSpacing = 34f;
         foreach (VehicleCatalog.VehicleDefinition def in VehicleCatalog.All)
         {
             VehicleCatalog.VehicleDefinition captured = def;
@@ -424,12 +427,14 @@ public class PhoneUI : MonoBehaviour
 
             shopVehicleRows.Add(new ShopVehicleRow { def = captured, statusText = nameText, buyButtonGO = buyBtn });
 
-            vy -= 38f;
+            vy -= vehicleRowSpacing;
         }
 
-        CreateLabel(parent, "🥤 음료 (스태미나 회복)", -45f, 15).alignment = TextAnchor.MiddleLeft;
+        float drinkLabelY = vy - 6f;
+        CreateLabel(parent, "🥤 음료 (스태미나 회복)", drinkLabelY, 15).alignment = TextAnchor.MiddleLeft;
 
-        float dy = -85f;
+        float dy = drinkLabelY - 38f;
+        const float drinkRowSpacing = 42f;
         foreach (VehicleShop.DrinkItem drink in VehicleShop.Drinks)
         {
             VehicleShop.DrinkItem captured = drink;
@@ -454,7 +459,7 @@ public class PhoneUI : MonoBehaviour
                 new Vector2(150f, dy), new Vector2(90f, 32f),
                 () => VehicleShop.BuyDrink(captured));
 
-            dy -= 45f;
+            dy -= drinkRowSpacing;
         }
 
         RefreshShopVehicleRows(); // 처음 만들 때 바로 한 번 채워서 탭을 열자마자 빈 텍스트가 보이지 않게 함
@@ -637,9 +642,21 @@ public class PhoneUI : MonoBehaviour
         img.color = bgColor;
 
         Button btn = go.AddComponent<Button>();
+        // 키보드/게임패드 자동 선택(Navigation)을 꺼서, 마우스로 한 번 누른 버튼이 계속 "선택된 상태"로 남지 않게 함.
+        // 이게 켜져 있으면 나중에 스페이스바(=UI Submit 키)를 누를 때 전혀 다른 상황에서(ex: 주유소) 이 버튼이
+        // 다시 눌린 것처럼 동작해버리는 문제가 있었음 (ex: 콜 수락 버튼)
+        btn.navigation = new Navigation { mode = Navigation.Mode.None };
         if (onClick != null)
         {
-            btn.onClick.AddListener(() => onClick());
+            btn.onClick.AddListener(() =>
+            {
+                onClick();
+                // 클릭 직후 선택 상태를 바로 해제 - 위 주석과 같은 이유
+                if (EventSystem.current != null)
+                {
+                    EventSystem.current.SetSelectedGameObject(null);
+                }
+            });
         }
 
         RectTransform rect = go.GetComponent<RectTransform>();
@@ -693,6 +710,13 @@ public class PhoneUI : MonoBehaviour
     void Update()
     {
         DeliveryJobManager manager = DeliveryJobManager.Instance;
+
+        // 콜 수락 단축키: F (예전엔 스페이스바였는데, 주유소 열기 등 다른 스페이스바 조작과 겹쳐서 F로 변경)
+        // 수락 버튼 클릭은 그대로 유지됨 - 이건 키보드 단축키만 추가하는 것
+        if (manager != null && manager.State == DeliveryJobManager.JobState.Proposed && Input.GetKeyDown(KeyCode.F))
+        {
+            manager.AcceptJob();
+        }
 
         UpdateTopBar();
         UpdateMinimap();
@@ -754,8 +778,9 @@ public class PhoneUI : MonoBehaviour
         switch (manager.State)
         {
             case DeliveryJobManager.JobState.Proposed:
-                callStatusText.text = "새 콜 도착!\n" + manager.CurrentPickupSpot.name + " → " + manager.CurrentDeliverySpot.name;
-                callInfoText.text = "거리 " + FormatDistance(manager.PickupToDeliveryDistance) + " · 예상 " + FormatTime(manager.PickupToDeliveryEtaSeconds);
+                callStatusText.text = (manager.IsUrgent ? "🔥 긴급 콜 도착!\n" : "새 콜 도착!\n") + manager.CurrentPickupSpot.name + " → " + manager.CurrentDeliverySpot.name;
+                callInfoText.text = "거리 " + FormatDistance(manager.PickupToDeliveryDistance) + " · 예상 " + FormatTime(manager.PickupToDeliveryEtaSeconds)
+                    + " · 💰" + manager.EstimatedFare + "원" + (manager.IsUrgent ? " (긴급 보너스)" : "");
                 SetCallTimerVisible(true);
                 SetAcceptVisible(true);
 

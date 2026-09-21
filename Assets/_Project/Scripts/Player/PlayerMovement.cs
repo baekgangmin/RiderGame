@@ -1,7 +1,8 @@
 using UnityEngine;
 
-// 배달 라이더 - 카메라 기준 이동 (M1) + 스태미나 연동 달리기 (M5) + 자전거 탑승 (M5)
+// 배달 라이더 - 조향식 이동 (M1) + 스태미나 연동 달리기 (M5) + 자전거 탑승 (M5)
 // 방향키(화살표)로만 조작. WASD는 사용하지 않음.
+// 좌/우 = 제자리 회전(조향), 상/하 = 캐릭터가 보는 방향으로 전진/후진 (차량 조작과 비슷한 방식)
 [RequireComponent(typeof(CharacterController))]
 public class PlayerMovement : MonoBehaviour
 {
@@ -19,8 +20,8 @@ public class PlayerMovement : MonoBehaviour
     [Header("중력")]
     public float gravity = -9.81f;
 
-    [Header("회전")]
-    public float rotationSpeed = 10f;
+    [Header("회전(조향) - 좌우 방향키를 누르면 이 속도(도/초)로 제자리에서 회전함")]
+    public float turnSpeed = 200f;
 
     private CharacterController controller;
     private Vector3 velocity;
@@ -70,7 +71,10 @@ public class PlayerMovement : MonoBehaviour
             velocity.y = -2f;
         }
 
-        // 방향키(화살표)만 사용
+        // 방향키(화살표)만 사용 - 좌우는 제자리 회전(조향), 상하는 캐릭터가 보고 있는 방향으로 전진/후진.
+        // (예전엔 카메라 기준으로 좌우 입력을 "옆으로 이동"시켰는데, 캐릭터가 회전하면 카메라도
+        //  같이 따라 돌면서 "옆" 방향 자체가 계속 바뀌어버려 가만히 좌우 키만 눌러도 원을 그리며
+        //  빙글빙글 도는 문제가 있었음. 좌우 키는 이동이 아니라 순수 회전으로만 처리해서 없앰)
         float horizontal = 0f;
         if (Input.GetKey(KeyCode.RightArrow)) horizontal += 1f;
         if (Input.GetKey(KeyCode.LeftArrow)) horizontal -= 1f;
@@ -79,37 +83,15 @@ public class PlayerMovement : MonoBehaviour
         if (Input.GetKey(KeyCode.UpArrow)) vertical += 1f;
         if (Input.GetKey(KeyCode.DownArrow)) vertical -= 1f;
 
-        Vector3 rawInput = new Vector3(horizontal, 0f, vertical);
-        if (rawInput.magnitude > 1f)
+        if (Mathf.Abs(horizontal) >= 0.1f)
         {
-            rawInput.Normalize();
+            transform.Rotate(Vector3.up, horizontal * turnSpeed * Time.deltaTime);
         }
 
-        // 카메라가 보는 방향(수평만) 기준으로 입력을 변환
-        Vector3 moveDir = Vector3.zero;
-        if (rawInput.magnitude >= 0.1f && cameraTransform != null)
-        {
-            Vector3 camForward = cameraTransform.forward;
-            camForward.y = 0f;
-            camForward.Normalize();
+        bool isMovingForward = Mathf.Abs(vertical) >= 0.1f;
+        Vector3 moveDir = isMovingForward ? transform.forward * vertical : Vector3.zero;
 
-            Vector3 camRight = cameraTransform.right;
-            camRight.y = 0f;
-            camRight.Normalize();
-
-            moveDir = camForward * vertical + camRight * horizontal;
-            if (moveDir.magnitude > 1f)
-            {
-                moveDir.Normalize();
-            }
-        }
-        else if (rawInput.magnitude >= 0.1f)
-        {
-            // 카메라를 못 찾은 경우 대비용 (안전장치)
-            moveDir = rawInput;
-        }
-
-        bool wantsToRun = Input.GetKey(KeyCode.LeftShift) && moveDir.magnitude >= 0.1f;
+        bool wantsToRun = Input.GetKey(KeyCode.LeftShift) && isMovingForward;
         float baseSpeed = isRiding ? bikeWalkSpeed : walkSpeed;
         float boostedSpeed = isRiding ? bikeRunSpeed : runSpeed;
         float currentSpeed = baseSpeed;
@@ -137,12 +119,9 @@ public class PlayerMovement : MonoBehaviour
 
         IsBoosting = boostingNow;
 
-        if (moveDir.magnitude >= 0.1f)
+        if (isMovingForward)
         {
             controller.Move(moveDir * currentSpeed * Time.deltaTime);
-
-            Quaternion targetRotation = Quaternion.LookRotation(moveDir);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
         }
 
         // 경사로/바닥 밀착용 중력 (점프는 없음)

@@ -24,8 +24,12 @@ public static class VehicleCatalog
     {
         new VehicleDefinition { id = "bike", displayName = "자전거", price = 3000, walkSpeed = 6.5f, runSpeed = 9.5f, sizeScale = 1f, bodyColor = new Color(0.2f, 0.75f, 0.3f), needsFuel = false },
         new VehicleDefinition { id = "kickboard", displayName = "킥보드", price = 8000, walkSpeed = 8f, runSpeed = 11f, sizeScale = 1f, bodyColor = new Color(1f, 0.6f, 0.1f), needsFuel = false },
+        // 스쿠터 - 실제 배달 라이더들이 가장 많이 타는 탈것이라 여기 추가함. 연료를 쓰는 것 중엔 가장 저렴하고 연료도 아낌
+        new VehicleDefinition { id = "scooter", displayName = "스쿠터", price = 15000, walkSpeed = 9.5f, runSpeed = 14f, sizeScale = 1.15f, bodyColor = new Color(0.15f, 0.75f, 0.65f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.3f },
         new VehicleDefinition { id = "motorcycle", displayName = "오토바이", price = 25000, walkSpeed = 11f, runSpeed = 16f, sizeScale = 1.3f, bodyColor = new Color(0.85f, 0.15f, 0.15f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.5f },
         new VehicleDefinition { id = "car", displayName = "자동차", price = 60000, walkSpeed = 14.5f, runSpeed = 21f, sizeScale = 1.8f, bodyColor = new Color(0.2f, 0.45f, 0.9f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.4f },
+        // 스포츠카 - 최고급 탈것. 제일 빠르지만 비싸고 연료도 제일 빨리 닳음(작은 연료탱크 + 높은 소모율)
+        new VehicleDefinition { id = "sportscar", displayName = "스포츠카", price = 120000, walkSpeed = 17f, runSpeed = 25f, sizeScale = 1.9f, bodyColor = new Color(1f, 0.85f, 0f), needsFuel = true, maxFuel = 80f, fuelDrainPerSecond = 0.6f },
     };
 
     private static readonly HashSet<string> owned = new HashSet<string>();

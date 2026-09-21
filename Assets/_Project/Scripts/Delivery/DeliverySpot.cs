@@ -221,17 +221,28 @@ public class DeliverySpot : MonoBehaviour
     void CompletePickup()
     {
         float limit = 30f;
-        DeliverySpot deliverySpot = DeliveryJobManager.Instance != null ? DeliveryJobManager.Instance.CurrentDeliverySpot : null;
+        int fare = DeliveryManager.baseFare;
+        DeliveryJobManager jobManager = DeliveryJobManager.Instance;
+        DeliverySpot deliverySpot = jobManager != null ? jobManager.CurrentDeliverySpot : null;
 
         if (deliverySpot != null)
         {
             float distance = Vector3.Distance(transform.position, deliverySpot.transform.position);
             limit = (distance / speedEstimateForTimeLimit) * pathFactor + bufferSeconds;
+            fare = DeliveryManager.CalculateFare(distance);
+        }
+
+        // 긴급 콜이면 시간은 더 빠듯하게, 배달비는 더 많이 - 콜 난이도/보상 다양화
+        bool urgent = jobManager != null && jobManager.IsUrgent;
+        if (urgent)
+        {
+            limit *= jobManager.urgentTimeMultiplier;
+            fare = Mathf.RoundToInt(fare * jobManager.urgentFareMultiplier);
         }
 
         HeadGaugeUI.Hide();
-        Debug.Log("픽업 완료! 이제 배달지로 이동하세요.");
-        DeliveryManager.StartDelivery(limit);
+        Debug.Log("픽업 완료! 이제 배달지로 이동하세요." + (urgent ? " (🔥 긴급)" : ""));
+        DeliveryManager.StartDelivery(limit, fare);
 
         SetRole(SpotRole.Inactive);
 

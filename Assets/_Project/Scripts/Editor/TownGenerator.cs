@@ -6,18 +6,25 @@ using UnityEditor.AI;
 // 유니티 상단 메뉴 "RiderGame > Generate Town + Setup Scene" 눌러서 실행
 public static class TownGenerator
 {
-    private const float BlockSize = 10f;
-    private const float StreetWidth = 6f;
-    private const int GridSize = 5;
+    // 맵을 더 넓게 느끼도록 블록/도로/격자 크기를 키움 (기존 5x5·86m -> 7x7·147m -> 7x7·179m)
+    private const float BlockSize = 13f;
+    // 나중에 다른 차량(교통 체증) AI가 다닐 수 있도록 도로 통로 자체를 더 넓힘 (기존 7 -> 11)
+    private const float StreetWidth = 11f;
+    private const int GridSize = 7;
 
-    private const float SidewalkMargin = 1.4f; // 차도 양옆에 남겨두는 인도 폭
-    private const int MainRoadGapIndex = 3;    // 이 가로줄을 참고 지도의 큰 도로(32번 도로 느낌)로 강조
+    // 인도 폭(차도 한쪽당) - 예전엔 그냥 차도 옆에 남는 빈 바닥이 인도 역할을 했는데,
+    // 이제는 실제 오브젝트로 분리해서 만들어서 나중에 보행자 NPC가 다닐 자리를 명확히 구분해둠
+    private const float SidewalkWidth = 2f;
+    private const float MainRoadExtraWidth = 1.5f; // 메인 도로는 차도를 이만큼 더 넓게 (그만큼 인도가 살짝 좁아짐)
+    private const int MainRoadGapIndex = GridSize / 2; // 이 가로줄을 참고 지도의 큰 도로(32번 도로 느낌)로 강조
 
     private const float WarpAmplitude = 1.0f;    // 격자 교차점을 얼마나 흔들어서 도로를 구불구불하게 만들지(미터)
     private const float BlockRotationRange = 6f; // 블록 전체를 얼마나 회전시켜서 불규칙한 모양으로 보이게 할지(도)
 
-    private static readonly Vector2Int ParkCell = new Vector2Int(0, 1); // 공원 블록 (참고 지도의 갈마공원 느낌)
-    private static readonly Vector2Int PondCell = new Vector2Int(4, 3); // 연못 블록 (참고 지도의 월평공원 호수 느낌)
+    private const float RoadThickness = 0.06f; // 차도/인도 두께 - 교차로 패드 높이 계산에도 재사용함
+
+    private static readonly Vector2Int ParkCell = new Vector2Int(1, 2);  // 공원 블록 (참고 지도의 갈마공원 느낌)
+    private static readonly Vector2Int PondCell = new Vector2Int(5, 4); // 연못 블록 (참고 지도의 월평공원 호수 느낌)
 
     // 실제 지도(참고 이미지) 느낌 - 밝은 인도 바닥 위에 어두운 차도가 지나가고, 베이지/황토색 건물들이 촘촘하게 들어참
     private static readonly Color GroundColor = new Color(0.90f, 0.88f, 0.84f);   // 인도/보도
@@ -27,6 +34,7 @@ public static class TownGenerator
     private static readonly Color LineYellow = new Color(0.95f, 0.78f, 0.15f);
     private static readonly Color ParkColor = new Color(0.42f, 0.62f, 0.35f);
     private static readonly Color WaterColor = new Color(0.35f, 0.55f, 0.75f);
+    private static readonly Color SidewalkColor = new Color(0.80f, 0.79f, 0.75f); // 인도 - 차도(어두운 회색)/잔디바닥(베이지)과 구분되는 콘크리트색
 
     private static readonly Color[] BuildingPalette = new Color[]
     {
@@ -49,6 +57,7 @@ public static class TownGenerator
 
         BuildTownGrid(townParent, nodes);
         BuildRoadNetwork(townParent, nodes);
+        BuildIntersectionCrosswalks(townParent, nodes);
         SetupBicycle();
         BakeNavMesh();
 
@@ -413,8 +422,9 @@ public static class TownGenerator
         float angle = Mathf.Atan2(diff.x, diff.z) * Mathf.Rad2Deg;
         Quaternion rotation = Quaternion.Euler(0f, angle, 0f);
 
-        float roadWidth = isMain ? Mathf.Max(2.5f, StreetWidth - SidewalkMargin) : Mathf.Max(1.8f, StreetWidth - SidewalkMargin * 2f);
-        float thickness = 0.06f;
+        // 차도 폭 - 인도(SidewalkWidth) 양쪽을 뺀 나머지가 차도. 메인 도로는 그만큼 차도를 더 넓게 씀
+        float roadWidth = GetRoadWidth(isMain);
+        float thickness = RoadThickness;
 
         GameObject road = GameObject.CreatePrimitive(PrimitiveType.Cube);
         road.name = "Road_" + label;
@@ -429,6 +439,9 @@ public static class TownGenerator
             Object.DestroyImmediate(roadCol);
         }
 
+        // 도로/인도처럼 얇고 서로 다닥다닥 붙어있는 바닥 장식들은 그림자를 주고받게 두면
+        // 섀도우맵 정밀도 문제로 표면이 깜빡거림 - 바닥 장식들은 그림자 자체를 꺼서 원천적으로 방지
+        DisableShadows(road);
         ApplyColor(road, isMain ? MainRoadColor : RoadColor);
 
         // 중앙선(차선)
@@ -446,7 +459,119 @@ public static class TownGenerator
             Object.DestroyImmediate(lineCol);
         }
 
+        DisableShadows(line);
         ApplyColor(line, isMain ? LineYellow : LineWhite);
+
+        // 인도 - 차도 양옆에 실제 오브젝트로 분리해서 만듦 (예전엔 그냥 빈 바닥이 인도 역할을 했음)
+        float sidewalkWidth = Mathf.Max(0.8f, (StreetWidth - roadWidth) * 0.5f);
+        float sidewalkOffset = roadWidth * 0.5f + sidewalkWidth * 0.5f;
+        Vector3 sideDir = rotation * Vector3.right;
+        BuildSidewalkStrip(parent, mid + sideDir * sidewalkOffset, rotation, sidewalkWidth, length, thickness, label + "_R");
+        BuildSidewalkStrip(parent, mid - sideDir * sidewalkOffset, rotation, sidewalkWidth, length, thickness, label + "_L");
+    }
+
+    private static void BuildSidewalkStrip(Transform parent, Vector3 center, Quaternion rotation, float width, float length, float thickness, string label)
+    {
+        GameObject sidewalk = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        sidewalk.name = "Sidewalk_" + label;
+        sidewalk.transform.SetParent(parent);
+        // 차도와 같은 높이 공식을 써서 바닥에서 뜨거나 파묻히지 않게 함 (예전에 주유소 기둥이 뜨던 것과 같은 종류의 버그 방지)
+        sidewalk.transform.position = new Vector3(center.x, thickness * 0.5f + 0.02f, center.z);
+        sidewalk.transform.rotation = rotation;
+        sidewalk.transform.localScale = new Vector3(width, thickness, length);
+
+        Collider col = sidewalk.GetComponent<Collider>();
+        if (col != null)
+        {
+            Object.DestroyImmediate(col);
+        }
+
+        DisableShadows(sidewalk);
+        ApplyColor(sidewalk, SidewalkColor);
+    }
+
+    private static float GetRoadWidth(bool isMain)
+    {
+        return (StreetWidth - SidewalkWidth * 2f) + (isMain ? MainRoadExtraWidth : 0f);
+    }
+
+    // 교차로에서는 가로/세로 도로 + 중앙선 + 인도가 전부 같은 높이에서 서로 겹쳐버려서 매 프레임 위아래가
+    // 뒤바뀌며 깜빡이는 Z-fighting이 생김. 교차로마다 그 위를 완전히 덮는 횡단보도 무늬를 한 겹 더 그려서
+    // 깜빡임을 가리고, 동시에 실제 횡단보도처럼 보이게 함.
+    private static void BuildIntersectionCrosswalks(Transform parent, Vector3[,] nodes)
+    {
+        for (int row = 0; row <= GridSize; row++)
+        {
+            bool isMain = (row == MainRoadGapIndex);
+            float padSize = GetRoadWidth(isMain);
+
+            for (int col = 0; col <= GridSize; col++)
+            {
+                BuildCrosswalkPad(parent, nodes[col, row], padSize, isMain, row + "_" + col);
+            }
+        }
+    }
+
+    private static void BuildCrosswalkPad(Transform parent, Vector3 center, float size, bool isMain, string label)
+    {
+        // 차도 중앙선(Line)까지 포함해서 이 교차로에 깔린 것들 중 가장 높은 지점보다 위에 둬야
+        // 깜빡임이 완전히 가려짐 (Line 맨 윗면 높이 공식과 동일)
+        float overlayBase = RoadThickness * 1.5f + 0.03f;
+        float padThickness = 0.04f;
+        float stripeThickness = 0.03f;
+
+        // 바탕 패드 - 이 아래서 겹쳐 있던 도로/인도 조각들의 깜빡임을 가려주는 역할
+        GameObject basePad = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        basePad.name = "Crosswalk_" + label + "_Base";
+        basePad.transform.SetParent(parent);
+        basePad.transform.position = new Vector3(center.x, overlayBase + padThickness * 0.5f, center.z);
+        basePad.transform.localScale = new Vector3(size, padThickness, size);
+        RemoveCollider(basePad);
+        DisableShadows(basePad);
+        ApplyColor(basePad, isMain ? MainRoadColor : RoadColor);
+
+        // 흰색 줄무늬 - 실제 횡단보도처럼 한 방향으로만 나란히 그림 (바둑판 무늬 아님)
+        float padTop = overlayBase + padThickness;
+        float stripeY = padTop + stripeThickness * 0.5f;
+        int stripeCount = Mathf.Max(4, Mathf.RoundToInt(size / 0.9f));
+        float stripeSpacing = size / stripeCount;
+        float stripeDepth = stripeSpacing * 0.55f; // 줄무늬 하나의 두께(진행 방향으로의 폭)
+
+        for (int i = 0; i < stripeCount; i++)
+        {
+            float offset = -size * 0.5f + stripeSpacing * (i + 0.5f);
+
+            GameObject stripe = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            stripe.name = "Crosswalk_" + label + "_Stripe" + i;
+            stripe.transform.SetParent(parent);
+            stripe.transform.position = new Vector3(center.x, stripeY, center.z + offset);
+            stripe.transform.localScale = new Vector3(size, stripeThickness, stripeDepth);
+            RemoveCollider(stripe);
+            DisableShadows(stripe);
+            ApplyColor(stripe, LineWhite);
+        }
+    }
+
+    private static void RemoveCollider(GameObject go)
+    {
+        Collider col = go.GetComponent<Collider>();
+        if (col != null)
+        {
+            Object.DestroyImmediate(col);
+        }
+    }
+
+    // 도로/인도/횡단보도처럼 얇고 서로 다닥다닥 붙어있는 바닥 장식 전용 - 그림자를 켜두면
+    // 섀도우맵 정밀도 문제로 표면이 깜빡거리는 원인이 되므로 아예 끔 (건물/공원/연못 등은 그대로 그림자 유지)
+    private static void DisableShadows(GameObject go)
+    {
+        Renderer renderer = go.GetComponent<Renderer>();
+        if (renderer == null)
+        {
+            return;
+        }
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
     }
 
     private static void ApplyColor(GameObject go, Color color)

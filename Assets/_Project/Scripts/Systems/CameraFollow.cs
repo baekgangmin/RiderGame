@@ -10,10 +10,10 @@ public class CameraFollow : MonoBehaviour
     public Vector3 offset = new Vector3(0f, 4f, -6f);
 
     [Header("위치 부드러움 (높을수록 빠르게 따라붙음)")]
-    public float positionSmoothSpeed = 16f;
+    public float positionSmoothSpeed = 10f;
 
-    [Header("회전 부드러움 (높을수록 빠르게 따라 돎)")]
-    public float rotationSmoothSpeed = 16f;
+    [Header("회전 부드러움 (높을수록 빠르게 따라 돎) - 너무 높으면 플레이어가 방향 바꿀 때 카메라가 홱 돌아서 어지러움")]
+    public float rotationSmoothSpeed = 6f;
 
     [Header("대상을 항상 바라볼지")]
     public bool lookAtTarget = true;

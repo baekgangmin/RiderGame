@@ -20,6 +20,24 @@ public class DeliveryJobManager : MonoBehaviour
     public DeliverySpot CurrentPickupSpot { get; private set; }
     public DeliverySpot CurrentDeliverySpot { get; private set; }
 
+    [Header("긴급 콜 확률 및 배율 - 시간은 빠듯해지고 보상은 늘어남")]
+    public float urgentChance = 0.3f;
+    public float urgentTimeMultiplier = 0.7f;
+    public float urgentFareMultiplier = 1.5f;
+
+    // 이번에 제안된 콜이 긴급 콜인지 - 픽업 완료 시 DeliverySpot이 시간/배달비 계산에 사용, 폰 콜받기 화면에도 표시됨
+    public bool IsUrgent { get; private set; }
+
+    // 콜받기 화면에서 수락 전에 미리 보여줄 예상 배달비 (긴급 콜이면 배율 적용)
+    public int EstimatedFare
+    {
+        get
+        {
+            int fare = DeliveryManager.CalculateFare(PickupToDeliveryDistance);
+            return IsUrgent ? Mathf.RoundToInt(fare * urgentFareMultiplier) : fare;
+        }
+    }
+
     // 콜 수락까지 남은 시간 (Proposed 상태가 아니면 0)
     public float OfferSecondsRemaining
     {
@@ -118,11 +136,13 @@ public class DeliveryJobManager : MonoBehaviour
 
         CurrentPickupSpot = spots[pickupIndex];
         CurrentDeliverySpot = spots[deliveryIndex];
+        IsUrgent = Random.value < urgentChance;
 
         State = JobState.Proposed;
         offerStartTime = Time.time;
 
-        Debug.Log("새 배달 요청 도착: " + CurrentPickupSpot.name + " -> " + CurrentDeliverySpot.name + " (핸드폰에서 수락하세요)");
+        Debug.Log("새 배달 요청 도착: " + CurrentPickupSpot.name + " -> " + CurrentDeliverySpot.name
+            + (IsUrgent ? " (🔥 긴급 콜)" : "") + " (핸드폰에서 수락하세요)");
     }
 
     // 폰의 수락 버튼에서 호출됨 - 이때부터 픽업존 마커/안내가 활성화됨
