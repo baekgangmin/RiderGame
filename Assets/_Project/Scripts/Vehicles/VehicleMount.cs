@@ -34,14 +34,16 @@ public class VehicleMount : MonoBehaviour
     private Transform playerTransform;
     private Transform originalParent;
     private Collider col;
-    private Vector3 originalScale;
+    private Transform placeholderVisual;
+    private Transform bikeModel;
 
     void Awake()
     {
         Instance = this;
         col = GetComponent<Collider>();
         originalParent = transform.parent;
-        originalScale = transform.localScale;
+        placeholderVisual = transform.Find("PlaceholderVisual");
+        bikeModel = transform.Find("BikeModel");
 
         // 부르기 버튼은 범위 밖에서도 눌릴 수 있으니 플레이어 참조를 미리 찾아둠
         GameObject playerGO = GameObject.FindGameObjectWithTag(playerTag);
@@ -57,7 +59,8 @@ public class VehicleMount : MonoBehaviour
         gameObject.SetActive(false);
     }
 
-    // 현재 장비한 탈것 종류에 맞춰 크기/색을 바꿈 - 실제 3D 모델이 따로 없어서 크기+색으로 종류를 구분함
+    // 현재 장비한 탈것 종류에 맞춰 모양을 바꿈 - "자전거"는 BikeModel(실제 3D 모델)을 보여주고,
+    // 아직 전용 모델이 없는 나머지 탈것은 예전처럼 PlaceholderVisual(원기둥)을 크기+색으로 구분해서 보여줌
     void ApplyVisual(VehicleCatalog.VehicleDefinition def)
     {
         if (def == null)
@@ -65,19 +68,33 @@ public class VehicleMount : MonoBehaviour
             return;
         }
 
-        transform.localScale = originalScale * def.sizeScale;
+        bool useBikeModel = def.id == "bike" && bikeModel != null;
 
-        Renderer[] renderers = GetComponentsInChildren<Renderer>();
-        foreach (Renderer r in renderers)
+        if (bikeModel != null)
         {
-            Material mat = r.material;
-            if (mat.HasProperty("_BaseColor"))
+            bikeModel.gameObject.SetActive(useBikeModel);
+        }
+        if (placeholderVisual != null)
+        {
+            placeholderVisual.gameObject.SetActive(!useBikeModel);
+        }
+
+        transform.localScale = Vector3.one * def.sizeScale;
+
+        if (!useBikeModel && placeholderVisual != null)
+        {
+            Renderer[] renderers = placeholderVisual.GetComponentsInChildren<Renderer>();
+            foreach (Renderer r in renderers)
             {
-                mat.SetColor("_BaseColor", def.bodyColor);
-            }
-            else
-            {
-                mat.color = def.bodyColor;
+                Material mat = r.material;
+                if (mat.HasProperty("_BaseColor"))
+                {
+                    mat.SetColor("_BaseColor", def.bodyColor);
+                }
+                else
+                {
+                    mat.color = def.bodyColor;
+                }
             }
         }
     }

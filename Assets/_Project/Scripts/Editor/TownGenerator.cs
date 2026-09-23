@@ -769,17 +769,38 @@ public static class TownGenerator
         zone.AddComponent<DeliverySpot>();
     }
 
+    // Varco3D로 만든 실제 자전거 3D 모델 - Unity가 임포트한 FBX 경로
+    private const string BikeModelAssetPath = "Assets/_Project/Art/Vehicles/DeliveryBicycle.fbx";
+    // AI로 생성된 모델이라 실제 크기/좌표축이 제각각이라, 게임 안 스케일에 맞춰 눈으로 보고 조정하는 값들.
+    // 처음엔 너무 작고 옆으로 눕지 않고 세워져 있었음 - 스케일을 키우고, Z-up 좌표계로 나온 것으로 보여
+    // X축으로 -90도 돌려서 눕혀봄 (반대로 세워지면 90으로 바꿔야 함)
+    private const float BikeModelScale = 6f;
+    private static readonly Vector3 BikeModelEulerAngles = new Vector3(-90f, 0f, 0f);
+
     private static void SetupBicycle()
     {
         GameObject bicycle = GameObject.Find("Bicycle");
         if (bicycle == null)
         {
-            bicycle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            bicycle.name = "Bicycle";
+            bicycle = new GameObject("Bicycle");
+        }
+
+        // 예전엔 Bicycle 루트 자체가 원기둥(Cylinder) 프리미티브였는데, 이제 루트는 빈 오브젝트로 두고
+        // 그 아래에 "PlaceholderVisual"(아직 전용 모델이 없는 킥보드/오토바이/자동차용 도형)과
+        // "BikeModel"(자전거 전용 실제 모델)을 자식으로 둠. VehicleMount가 활성 탈것에 따라 둘 중 하나만 보여줌.
+        MeshFilter rootMeshFilter = bicycle.GetComponent<MeshFilter>();
+        if (rootMeshFilter != null)
+        {
+            Object.DestroyImmediate(rootMeshFilter);
+        }
+        MeshRenderer rootRenderer = bicycle.GetComponent<MeshRenderer>();
+        if (rootRenderer != null)
+        {
+            Object.DestroyImmediate(rootRenderer);
         }
 
         bicycle.transform.position = new Vector3(2f, 0.4f, 2f);
-        bicycle.transform.localScale = new Vector3(0.5f, 0.8f, 1.2f);
+        bicycle.transform.localScale = Vector3.one;
 
         CapsuleCollider capsule = bicycle.GetComponent<CapsuleCollider>();
         if (capsule != null)
@@ -794,6 +815,38 @@ public static class TownGenerator
         }
         box.isTrigger = true;
         box.size = new Vector3(2f, 2f, 2f);
+
+        Transform placeholder = bicycle.transform.Find("PlaceholderVisual");
+        if (placeholder == null)
+        {
+            GameObject placeholderGO = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            placeholderGO.name = "PlaceholderVisual";
+            placeholderGO.transform.SetParent(bicycle.transform, false);
+            placeholderGO.transform.localPosition = Vector3.zero;
+            placeholderGO.transform.localScale = new Vector3(0.5f, 0.8f, 1.2f);
+            Object.DestroyImmediate(placeholderGO.GetComponent<Collider>());
+        }
+
+        // 스케일/회전 조정값을 바꾼 뒤 다시 생성했을 때 바로 반영되도록, 기존 것이 있으면 지우고 새로 만듦
+        Transform existingBikeModel = bicycle.transform.Find("BikeModel");
+        if (existingBikeModel != null)
+        {
+            Object.DestroyImmediate(existingBikeModel.gameObject);
+        }
+
+        GameObject bikeAsset = AssetDatabase.LoadAssetAtPath<GameObject>(BikeModelAssetPath);
+        if (bikeAsset != null)
+        {
+            GameObject bikeInstance = (GameObject)PrefabUtility.InstantiatePrefab(bikeAsset, bicycle.transform);
+            bikeInstance.name = "BikeModel";
+            bikeInstance.transform.localPosition = Vector3.zero;
+            bikeInstance.transform.localRotation = Quaternion.Euler(BikeModelEulerAngles);
+            bikeInstance.transform.localScale = Vector3.one * BikeModelScale;
+        }
+        else
+        {
+            Debug.LogWarning("BikeModel FBX를 못 찾았어요(" + BikeModelAssetPath + "). Unity가 아직 임포트하지 않았을 수 있으니, 한 번 더 Generate Town을 실행해보세요.");
+        }
 
         if (bicycle.GetComponent<VehicleMount>() == null)
         {
