@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.AI;
+using UnityEditor.Animations;
 using System.Collections.Generic;
 
 // 씬 전체 자동 세팅 (Player 태그, 카메라, 스태미나 시스템, 마을 블록아웃, 배달 스팟, 자전거, 폰 UI)
@@ -95,6 +96,7 @@ public static class TownGenerator
         {
             player.tag = "Player";
             player.transform.position = new Vector3(0f, 1f, 0f);
+            SetupPlayerVisual(player);
         }
 
         GameObject mainCam = GameObject.Find("Main Camera");
@@ -110,6 +112,149 @@ public static class TownGenerator
                 follow.target = player.transform;
             }
         }
+    }
+
+    // Varco3D 애니메이션 스튜디오에서 리깅 + 걷기/뛰기 애니메이션까지 만든 캐릭터 - GLB로 받아야
+    // 실제 뼈대 애니메이션이 살아있음(같은 걸 FBX로 받으면 포즈 하나만 굳어서 나옴, glTFast 패키지로 임포트)
+    // "걷기" GLB 쪽 모델을 기준 비주얼로 쓰고, "뛰기" 애니메이션은 같은 뼈대에서 클립만 따로 가져와 붙임
+    private const string CharacterModelAssetPath = "Assets/_Project/Art/Characters/Animations/RiderCharacter_Walk.glb";
+    private const string CharacterRunClipAssetPath = "Assets/_Project/Art/Characters/Animations/RiderCharacter_Run.glb";
+    private const string CharacterIdleClipAssetPath = "Assets/_Project/Art/Characters/Animations/RiderCharacter_Idle.glb";
+    private const string CharacterWalkBackClipAssetPath = "Assets/_Project/Art/Characters/Animations/RiderCharacter_WalkBack.glb";
+    private const string CharacterRunBackClipAssetPath = "Assets/_Project/Art/Characters/Animations/RiderCharacter_RunBack.glb";
+    private const string CharacterAnimatorControllerPath = "Assets/_Project/Animations/RiderCharacterAnimator.controller";
+    // glTFast로 임포트하면 이미 Y-up으로 똑바로 서 있어서(별도 회전 보정 불필요) 원본 메시 최대 높이(약 1.167유닛)를
+    // Player의 부모 스케일(0.5)을 상쇄해서 월드 기준 약 1m 높이가 되도록 맞춘 값 (기존 1.714) -
+    // 캐릭터가 좀 작아 보인다는 피드백으로 10% 키움(약 1.1m)
+    private const float CharacterModelScale = 1.885f;
+    private static readonly Vector3 CharacterModelEulerAngles = Vector3.zero;
+    // 발이 실제 바닥(Y=0)에 딱 붙도록 맞춘 값 - 주의: Player 스폰 위치(Y=1)를 기준으로 계산하면 안 됨!
+    // CharacterController는 중력으로 실제 안착하면 Y=0.58 정도로 내려앉으므로(스폰 위치보다 낮음),
+    // 반드시 중력 낙하를 시뮬레이션해서 "안착한 뒤의 Player 위치" 기준으로 계산해야 함 -
+    // 스폰 위치 기준으로 계산했다가 캐릭터가 바닥에 파묻혀 보이는 문제가 있었음
+    private static readonly Vector3 CharacterModelLocalPosition = new Vector3(0f, -0.8798f, 0f);
+
+    // Player 루트의 기존 캡슐 Mesh 대신, 실제 라이더 캐릭터 모델을 자식으로 붙임 (자전거의 BikeModel과 같은 패턴)
+    private static void SetupPlayerVisual(GameObject player)
+    {
+        MeshFilter rootMeshFilter = player.GetComponent<MeshFilter>();
+        if (rootMeshFilter != null)
+        {
+            Object.DestroyImmediate(rootMeshFilter);
+        }
+        MeshRenderer rootRenderer = player.GetComponent<MeshRenderer>();
+        if (rootRenderer != null)
+        {
+            Object.DestroyImmediate(rootRenderer);
+        }
+
+        // 스케일/회전 조정값을 바꾼 뒤 다시 생성했을 때 바로 반영되도록, 기존 것이 있으면 지우고 새로 만듦
+        Transform existingModel = player.transform.Find("CharacterModel");
+        if (existingModel != null)
+        {
+            Object.DestroyImmediate(existingModel.gameObject);
+        }
+
+        GameObject characterAsset = AssetDatabase.LoadAssetAtPath<GameObject>(CharacterModelAssetPath);
+        if (characterAsset != null)
+        {
+            GameObject characterInstance = (GameObject)PrefabUtility.InstantiatePrefab(characterAsset, player.transform);
+            characterInstance.name = "CharacterModel";
+            characterInstance.transform.localPosition = CharacterModelLocalPosition;
+            characterInstance.transform.localRotation = Quaternion.Euler(CharacterModelEulerAngles);
+            characterInstance.transform.localScale = Vector3.one * CharacterModelScale;
+
+            // glTFast가 모델 루트에 Animator를 이미 붙여줌 - 여기에 걷기/뛰기 상태를 오가는 컨트롤러를 연결
+            Animator animator = characterInstance.GetComponent<Animator>();
+            if (animator == null)
+            {
+                animator = characterInstance.AddComponent<Animator>();
+            }
+            animator.runtimeAnimatorController = BuildCharacterAnimatorController();
+            animator.applyRootMotion = false;
+
+            if (characterInstance.GetComponent<CharacterVisualAnimator>() == null)
+            {
+                characterInstance.AddComponent<CharacterVisualAnimator>();
+            }
+        }
+        else
+        {
+            Debug.LogWarning("CharacterModel GLB를 못 찾았어요(" + CharacterModelAssetPath + "). Unity가 아직 임포트하지 않았을 수 있으니, 한 번 더 Generate Town을 실행해보세요.");
+        }
+    }
+
+    // 걷기 GLB, 뛰기 GLB 각각에 딸려있는 AnimationClip 서브 에셋을 찾아 하나의 AnimatorController로 묶음 -
+    // Idle(기본)/Walk/Run 세 상태를 IsMoving, IsRunning 두 bool 파라미터로 오가게 함
+    private static AnimationClip FindAnimationClip(string assetPath)
+    {
+        Object[] assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+        foreach (Object a in assets)
+        {
+            if (a is AnimationClip clip)
+            {
+                return clip;
+            }
+        }
+        return null;
+    }
+
+    // Idle/Walk/Run/WalkBack/RunBack 다섯 상태를 IsMoving/IsRunning/IsBackward 세 bool 조합으로 오가게 함 -
+    // 조합마다 목표 상태가 하나뿐이라 AnyState에서 바로바로 전환시킴(Idle 경유 없이 Walk<->Run<->뒤로도 바로 전환됨)
+    private static AnimatorController BuildCharacterAnimatorController()
+    {
+        string dir = System.IO.Path.GetDirectoryName(CharacterAnimatorControllerPath).Replace("\\", "/");
+        if (!AssetDatabase.IsValidFolder(dir))
+        {
+            AssetDatabase.CreateFolder("Assets/_Project", "Animations");
+        }
+
+        // 상태/전환 구조를 바꿀 때마다 깔끔하게 다시 만들기 위해 기존 것이 있으면 지우고 새로 만듦
+        if (AssetDatabase.LoadAssetAtPath<AnimatorController>(CharacterAnimatorControllerPath) != null)
+        {
+            AssetDatabase.DeleteAsset(CharacterAnimatorControllerPath);
+        }
+
+        AnimatorController controller = AnimatorController.CreateAnimatorControllerAtPath(CharacterAnimatorControllerPath);
+        controller.AddParameter("IsMoving", AnimatorControllerParameterType.Bool);
+        controller.AddParameter("IsRunning", AnimatorControllerParameterType.Bool);
+        controller.AddParameter("IsBackward", AnimatorControllerParameterType.Bool);
+
+        AnimatorStateMachine sm = controller.layers[0].stateMachine;
+        AnimatorState idle = sm.AddState("Idle");
+        AnimatorState walk = sm.AddState("Walk");
+        AnimatorState run = sm.AddState("Run");
+        AnimatorState walkBack = sm.AddState("WalkBack");
+        AnimatorState runBack = sm.AddState("RunBack");
+        sm.defaultState = idle;
+
+        AddAnyStateTransition(sm, idle, false, false, false);
+        AddAnyStateTransition(sm, walk, true, false, false);
+        AddAnyStateTransition(sm, run, true, true, false);
+        AddAnyStateTransition(sm, walkBack, true, false, true);
+        AddAnyStateTransition(sm, runBack, true, true, true);
+
+        // Generate Town을 다시 돌렸을 때 GLB를 새로 받았어도 항상 최신 클립을 가리키도록 매번 갱신
+        idle.motion = FindAnimationClip(CharacterIdleClipAssetPath);
+        walk.motion = FindAnimationClip(CharacterModelAssetPath);
+        run.motion = FindAnimationClip(CharacterRunClipAssetPath);
+        walkBack.motion = FindAnimationClip(CharacterWalkBackClipAssetPath);
+        runBack.motion = FindAnimationClip(CharacterRunBackClipAssetPath);
+
+        return controller;
+    }
+
+    // AnyState에서 targetState로 가는 전환 하나를 추가 - IsMoving/IsRunning/IsBackward 조합이
+    // 정확히 이 상태 하나만 가리키도록 세 조건을 전부 명시함(다른 상태와 겹치지 않게)
+    private static void AddAnyStateTransition(AnimatorStateMachine sm, AnimatorState targetState, bool isMoving, bool isRunning, bool isBackward)
+    {
+        AnimatorStateTransition t = sm.AddAnyStateTransition(targetState);
+        t.hasExitTime = false;
+        t.duration = 0.15f;
+        t.canTransitionToSelf = false;
+        t.AddCondition(isMoving ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0, "IsMoving");
+        t.AddCondition(isRunning ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0, "IsRunning");
+        t.AddCondition(isBackward ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0, "IsBackward");
     }
 
     private static void SetupManagers()
@@ -772,10 +917,48 @@ public static class TownGenerator
     // Varco3D로 만든 실제 자전거 3D 모델 - Unity가 임포트한 FBX 경로
     private const string BikeModelAssetPath = "Assets/_Project/Art/Vehicles/DeliveryBicycle.fbx";
     // AI로 생성된 모델이라 실제 크기/좌표축이 제각각이라, 게임 안 스케일에 맞춰 눈으로 보고 조정하는 값들.
-    // 처음엔 너무 작고 옆으로 눕지 않고 세워져 있었음 - 스케일을 키우고, Z-up 좌표계로 나온 것으로 보여
-    // X축으로 -90도 돌려서 눕혀봄 (반대로 세워지면 90으로 바꿔야 함)
-    private const float BikeModelScale = 6f;
+    // 원본 메시 기준 최대 길이가 약 1유닛이라, 실제 자전거 길이(약 1.8m)에 맞추려면 1.8배 정도가 적당함
+    // (6배는 6m짜리 자전거가 되어 플레이어가 파묻힌 것처럼 보였음)
+    private const float BikeModelScale = 1.8f;
     private static readonly Vector3 BikeModelEulerAngles = new Vector3(-90f, 0f, 0f);
+    // 모델 피벗이 세로 중앙에 있어서 그대로 두면 바퀴가 땅에 살짝 파묻힘 - 절반 높이만큼 들어올려 바퀴가 바닥에 닿게 함
+    private static readonly Vector3 BikeModelLocalPosition = new Vector3(0f, 0.225f, 0f);
+
+    // 킥보드/스쿠터도 자전거와 같은 Varco3D 파이프라인으로 만들어서 기본 자세(-90도 X 보정)와
+    // "피벗이 세로 중앙에 있어서 바닥 정렬용으로 y를 띄워야 하는" 특징이 동일함
+    private const string KickboardModelAssetPath = "Assets/_Project/Art/Vehicles/Kickboard.fbx";
+    // 캐릭터와 나란히 태워보니 손잡이 폭이 캐릭터보다 훨씬 커 보여서 줄임(1.3 -> 1.0, 길이 약 1m로)
+    private const float KickboardModelScale = 1.0f;
+    // 자전거와 달리 이 모델은 원본 좌우 방향이 90도 어긋나게 나와서(실제로 타보면 진행 방향과
+    // 킥보드가 보는 방향이 안 맞음) Y축으로 -90도 더 돌려서 자전거 기준과 맞춤
+    private static readonly Vector3 KickboardModelEulerAngles = new Vector3(-90f, -90f, 0f);
+    private static readonly Vector3 KickboardModelLocalPosition = new Vector3(0f, 0.0383f, 0f);
+
+    private const string ScooterModelAssetPath = "Assets/_Project/Art/Vehicles/Scooter.fbx";
+    private const float ScooterModelScale = 1.6f;
+    private static readonly Vector3 ScooterModelEulerAngles = new Vector3(-90f, 0f, 0f);
+    // 배달 박스를 뺀 새 스쿠터 모델로 다시 만들면서 세로 비율이 달라져 바닥에서 0.366만큼 떠 보였음 - 그만큼 낮춤
+    private static readonly Vector3 ScooterModelLocalPosition = new Vector3(0f, 0.203f, 0f);
+
+    // 오토바이/자동차/스포츠카 - 전부 처음 생성한 전용 3D 모델 (Varco3D 정규화 규칙상 원본 메시 최대 길이 약 1유닛,
+    // 자전거/스쿠터와 같은 -90도 X 보정으로 방향이 맞음 - 오토바이/자동차/스포츠카를 자전거와 나란히 놓고
+    // 위에서 본 스크린샷으로 확인함). 스케일은 실제 차종 길이(m) 기준으로 맞춤.
+    // 캐릭터(키 2m 기준)와 나란히 놓고 비교해보니 오토바이/자동차/스포츠카가 너무 커서(자동차는 캐릭터보다 지붕이
+    // 더 높았음) 스케일을 줄임 - 세로 정렬 값도 새 스케일에 맞춰 다시 계산함
+    private const string MotorcycleModelAssetPath = "Assets/_Project/Art/Vehicles/Motorcycle.fbx";
+    private const float MotorcycleModelScale = 1.7f;
+    private static readonly Vector3 MotorcycleModelEulerAngles = new Vector3(-90f, 0f, 0f);
+    private static readonly Vector3 MotorcycleModelLocalPosition = new Vector3(0f, 0.2113f, 0f);
+
+    private const string CarModelAssetPath = "Assets/_Project/Art/Vehicles/Car.fbx";
+    private const float CarModelScale = 2.8f;
+    private static readonly Vector3 CarModelEulerAngles = new Vector3(-90f, 0f, 0f);
+    private static readonly Vector3 CarModelLocalPosition = new Vector3(0f, 0.4857f, 0f);
+
+    private const string SportscarModelAssetPath = "Assets/_Project/Art/Vehicles/Sportscar.fbx";
+    private const float SportscarModelScale = 2.6f;
+    private static readonly Vector3 SportscarModelEulerAngles = new Vector3(-90f, 0f, 0f);
+    private static readonly Vector3 SportscarModelLocalPosition = new Vector3(0f, 0.1839f, 0f);
 
     private static void SetupBicycle()
     {
@@ -799,7 +982,11 @@ public static class TownGenerator
             Object.DestroyImmediate(rootRenderer);
         }
 
+        // 이전에 탑승 테스트 등으로 Player 밑에 붙어있는 상태로 남아있을 수 있어서(에디터에서 수동으로 태워본 경우 등)
+        // 매번 재생성할 때 확실히 최상위로 되돌려놓음 - 안 그러면 Player의 스케일(0.5)까지 같이 곱해져서 작게 보임
+        bicycle.transform.SetParent(null, true);
         bicycle.transform.position = new Vector3(2f, 0.4f, 2f);
+        bicycle.transform.rotation = Quaternion.identity;
         bicycle.transform.localScale = Vector3.one;
 
         CapsuleCollider capsule = bicycle.GetComponent<CapsuleCollider>();
@@ -839,7 +1026,7 @@ public static class TownGenerator
         {
             GameObject bikeInstance = (GameObject)PrefabUtility.InstantiatePrefab(bikeAsset, bicycle.transform);
             bikeInstance.name = "BikeModel";
-            bikeInstance.transform.localPosition = Vector3.zero;
+            bikeInstance.transform.localPosition = BikeModelLocalPosition;
             bikeInstance.transform.localRotation = Quaternion.Euler(BikeModelEulerAngles);
             bikeInstance.transform.localScale = Vector3.one * BikeModelScale;
         }
@@ -848,9 +1035,40 @@ public static class TownGenerator
             Debug.LogWarning("BikeModel FBX를 못 찾았어요(" + BikeModelAssetPath + "). Unity가 아직 임포트하지 않았을 수 있으니, 한 번 더 Generate Town을 실행해보세요.");
         }
 
+        SpawnVehicleModel(bicycle.transform, "KickboardModel", KickboardModelAssetPath, KickboardModelLocalPosition, KickboardModelEulerAngles, KickboardModelScale);
+        SpawnVehicleModel(bicycle.transform, "ScooterModel", ScooterModelAssetPath, ScooterModelLocalPosition, ScooterModelEulerAngles, ScooterModelScale);
+        SpawnVehicleModel(bicycle.transform, "MotorcycleModel", MotorcycleModelAssetPath, MotorcycleModelLocalPosition, MotorcycleModelEulerAngles, MotorcycleModelScale);
+        SpawnVehicleModel(bicycle.transform, "CarModel", CarModelAssetPath, CarModelLocalPosition, CarModelEulerAngles, CarModelScale);
+        SpawnVehicleModel(bicycle.transform, "SportscarModel", SportscarModelAssetPath, SportscarModelLocalPosition, SportscarModelEulerAngles, SportscarModelScale);
+
         if (bicycle.GetComponent<VehicleMount>() == null)
         {
             bicycle.AddComponent<VehicleMount>();
+        }
+    }
+
+    // BikeModel과 같은 패턴(자식 오브젝트로 인스턴스화 + 위치/회전/스케일 적용)을 킥보드/스쿠터에도 그대로 재사용
+    private static void SpawnVehicleModel(Transform parent, string childName, string assetPath, Vector3 localPosition, Vector3 eulerAngles, float scale)
+    {
+        Transform existing = parent.Find(childName);
+        if (existing != null)
+        {
+            Object.DestroyImmediate(existing.gameObject);
+        }
+
+        GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+        if (asset != null)
+        {
+            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(asset, parent);
+            instance.name = childName;
+            instance.transform.localPosition = localPosition;
+            instance.transform.localRotation = Quaternion.Euler(eulerAngles);
+            instance.transform.localScale = Vector3.one * scale;
+            instance.SetActive(false); // VehicleMount.ApplyVisual이 활성 탈것에 맞춰 켜줌
+        }
+        else
+        {
+            Debug.LogWarning(childName + " FBX를 못 찾았어요(" + assetPath + "). Unity가 아직 임포트하지 않았을 수 있으니, 한 번 더 Generate Town을 실행해보세요.");
         }
     }
 }

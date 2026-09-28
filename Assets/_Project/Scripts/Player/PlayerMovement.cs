@@ -28,9 +28,17 @@ public class PlayerMovement : MonoBehaviour
     private bool isGrounded;
     private bool isRiding;
     private bool isFuelVehicle;
+    private bool isMovingForward;
+    private float verticalInput;
 
     // 지금 쉬프트로 가속 중인지 (오토바이/자동차 연료 소모량 계산에 사용됨)
     public bool IsBoosting { get; private set; }
+
+    // 캐릭터 모델의 걷기/뛰기 애니메이션 전환에 사용 (CharacterVisualAnimator 참고)
+    public bool IsMovingForward => isMovingForward;
+    public bool IsRiding => isRiding;
+    // 아래 방향키(뒤로 이동) 입력 중인지 - 뒤로 걷기/뒤로 뛰기 애니메이션 전환에 사용
+    public bool IsBackward => verticalInput < -0.1f;
 
     void Awake()
     {
@@ -82,13 +90,14 @@ public class PlayerMovement : MonoBehaviour
         float vertical = 0f;
         if (Input.GetKey(KeyCode.UpArrow)) vertical += 1f;
         if (Input.GetKey(KeyCode.DownArrow)) vertical -= 1f;
+        verticalInput = vertical;
 
         if (Mathf.Abs(horizontal) >= 0.1f)
         {
             transform.Rotate(Vector3.up, horizontal * turnSpeed * Time.deltaTime);
         }
 
-        bool isMovingForward = Mathf.Abs(vertical) >= 0.1f;
+        isMovingForward = Mathf.Abs(vertical) >= 0.1f;
         Vector3 moveDir = isMovingForward ? transform.forward * vertical : Vector3.zero;
 
         bool wantsToRun = Input.GetKey(KeyCode.LeftShift) && isMovingForward;

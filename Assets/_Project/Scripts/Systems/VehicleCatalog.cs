@@ -18,12 +18,20 @@ public static class VehicleCatalog
         public bool needsFuel;       // 오토바이/자동차부터 true - 자전거/킥보드는 연료 없이 무제한
         public float maxFuel;
         public float fuelDrainPerSecond; // 탑승 중일 때 초당 소모량
+
+        // 탑승 시 플레이어 기준 위치/회전(로컬) - 탈것마다 크기/모양이 달라서 자전거 기준값을 기본값으로 두고
+        // 전용 3D 모델이 있는 탈것은 실제로 타 본 모습을 보고 하나씩 맞춤 (VehicleMount.Mount 참고)
+        public Vector3 mountLocalPosition = new Vector3(0f, -0.35f, 0.2f);
+        public Vector3 mountLocalEulerAngles = Vector3.zero;
     }
 
     public static readonly List<VehicleDefinition> All = new List<VehicleDefinition>
     {
         new VehicleDefinition { id = "bike", displayName = "자전거", price = 3000, walkSpeed = 6.5f, runSpeed = 9.5f, sizeScale = 1f, bodyColor = new Color(0.2f, 0.75f, 0.3f), needsFuel = false },
-        new VehicleDefinition { id = "kickboard", displayName = "킥보드", price = 8000, walkSpeed = 8f, runSpeed = 11f, sizeScale = 1f, bodyColor = new Color(1f, 0.6f, 0.1f), needsFuel = false },
+        // 탑승 위치는 실제로 캐릭터를 태워보면서(에디터에서 Bicycle을 Player 자식으로 붙여 눈으로 확인) 맞춘 값 -
+        // 발이 발판에 오도록 y를 낮춤
+        new VehicleDefinition { id = "kickboard", displayName = "킥보드", price = 8000, walkSpeed = 8f, runSpeed = 11f, sizeScale = 1f, bodyColor = new Color(1f, 0.6f, 0.1f), needsFuel = false,
+            mountLocalPosition = new Vector3(0f, -0.346f, 0f), mountLocalEulerAngles = Vector3.zero },
         // 스쿠터 - 실제 배달 라이더들이 가장 많이 타는 탈것이라 여기 추가함. 연료를 쓰는 것 중엔 가장 저렴하고 연료도 아낌
         new VehicleDefinition { id = "scooter", displayName = "스쿠터", price = 15000, walkSpeed = 9.5f, runSpeed = 14f, sizeScale = 1.15f, bodyColor = new Color(0.15f, 0.75f, 0.65f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.3f },
         new VehicleDefinition { id = "motorcycle", displayName = "오토바이", price = 25000, walkSpeed = 11f, runSpeed = 16f, sizeScale = 1.3f, bodyColor = new Color(0.85f, 0.15f, 0.15f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.5f },

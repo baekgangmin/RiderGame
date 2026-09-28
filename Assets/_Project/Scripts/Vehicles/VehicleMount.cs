@@ -14,10 +14,6 @@ public class VehicleMount : MonoBehaviour
     [Header("탑승/하차 키")]
     public KeyCode mountKey = KeyCode.E;
 
-    [Header("탑승 시 플레이어 기준 위치/회전 (로컬)")]
-    public Vector3 mountLocalPosition = new Vector3(0f, -0.35f, 0.2f);
-    public Vector3 mountLocalEulerAngles = Vector3.zero;
-
     [Header("하차 시 플레이어 앞으로 떨어지는 거리")]
     public float dismountOffset = 1.5f;
 
@@ -36,6 +32,11 @@ public class VehicleMount : MonoBehaviour
     private Collider col;
     private Transform placeholderVisual;
     private Transform bikeModel;
+    private Transform kickboardModel;
+    private Transform scooterModel;
+    private Transform motorcycleModel;
+    private Transform carModel;
+    private Transform sportscarModel;
 
     void Awake()
     {
@@ -44,6 +45,11 @@ public class VehicleMount : MonoBehaviour
         originalParent = transform.parent;
         placeholderVisual = transform.Find("PlaceholderVisual");
         bikeModel = transform.Find("BikeModel");
+        kickboardModel = transform.Find("KickboardModel");
+        scooterModel = transform.Find("ScooterModel");
+        motorcycleModel = transform.Find("MotorcycleModel");
+        carModel = transform.Find("CarModel");
+        sportscarModel = transform.Find("SportscarModel");
 
         // 부르기 버튼은 범위 밖에서도 눌릴 수 있으니 플레이어 참조를 미리 찾아둠
         GameObject playerGO = GameObject.FindGameObjectWithTag(playerTag);
@@ -59,8 +65,20 @@ public class VehicleMount : MonoBehaviour
         gameObject.SetActive(false);
     }
 
-    // 현재 장비한 탈것 종류에 맞춰 모양을 바꿈 - "자전거"는 BikeModel(실제 3D 모델)을 보여주고,
-    // 아직 전용 모델이 없는 나머지 탈것은 예전처럼 PlaceholderVisual(원기둥)을 크기+색으로 구분해서 보여줌
+    // id에 해당하는 전용 3D 모델을 반환 (없으면 null) - ApplyVisual/Mount 양쪽에서 같이 씀
+    private Transform GetDedicatedModel(string id)
+    {
+        if (id == "bike") return bikeModel;
+        if (id == "kickboard") return kickboardModel;
+        if (id == "scooter") return scooterModel;
+        if (id == "motorcycle") return motorcycleModel;
+        if (id == "car") return carModel;
+        if (id == "sportscar") return sportscarModel;
+        return null;
+    }
+
+    // 현재 장비한 탈것 종류에 맞춰 모양을 바꿈 - 전용 3D 모델이 있는 탈것(자전거/킥보드/스쿠터/오토바이/자동차/스포츠카)은 그 모델을 보여주고,
+    // 전용 모델이 없는 탈것은 예전처럼 PlaceholderVisual(원기둥)을 크기+색으로 구분해서 보여줌
     void ApplyVisual(VehicleCatalog.VehicleDefinition def)
     {
         if (def == null)
@@ -68,20 +86,44 @@ public class VehicleMount : MonoBehaviour
             return;
         }
 
-        bool useBikeModel = def.id == "bike" && bikeModel != null;
+        Transform activeModel = GetDedicatedModel(def.id);
+
+        bool useDedicatedModel = activeModel != null;
 
         if (bikeModel != null)
         {
-            bikeModel.gameObject.SetActive(useBikeModel);
+            bikeModel.gameObject.SetActive(activeModel == bikeModel);
+        }
+        if (kickboardModel != null)
+        {
+            kickboardModel.gameObject.SetActive(activeModel == kickboardModel);
+        }
+        if (scooterModel != null)
+        {
+            scooterModel.gameObject.SetActive(activeModel == scooterModel);
+        }
+        if (motorcycleModel != null)
+        {
+            motorcycleModel.gameObject.SetActive(activeModel == motorcycleModel);
+        }
+        if (carModel != null)
+        {
+            carModel.gameObject.SetActive(activeModel == carModel);
+        }
+        if (sportscarModel != null)
+        {
+            sportscarModel.gameObject.SetActive(activeModel == sportscarModel);
         }
         if (placeholderVisual != null)
         {
-            placeholderVisual.gameObject.SetActive(!useBikeModel);
+            placeholderVisual.gameObject.SetActive(!useDedicatedModel);
         }
 
-        transform.localScale = Vector3.one * def.sizeScale;
+        // 전용 모델(자전거/킥보드/스쿠터/오토바이/자동차/스포츠카)은 각자의 XModelScale로 이미 실제 크기가 맞춰져 있어서
+        // 여기서 sizeScale까지 또 곱하면 중복 확대됨(예: 스포츠카는 1.9배 더 커짐) - 전용 모델이 없는 임시 도형에만 sizeScale 적용
+        transform.localScale = useDedicatedModel ? Vector3.one : Vector3.one * def.sizeScale;
 
-        if (!useBikeModel && placeholderVisual != null)
+        if (!useDedicatedModel && placeholderVisual != null)
         {
             Renderer[] renderers = placeholderVisual.GetComponentsInChildren<Renderer>();
             foreach (Renderer r in renderers)
@@ -196,10 +238,27 @@ public class VehicleMount : MonoBehaviour
 
         IsMounted = true;
 
-        // 실제로 플레이어 자식으로 붙여서 위치/회전을 그대로 따라가게 함
+        VehicleCatalog.VehicleDefinition mountDef = VehicleCatalog.GetActive();
+
+        // 플레이어(부모)가 축소되어 있으면(예: 0.5배) 자식으로 붙는 탈것의 "겉보기 위치/크기"도 그만큼 같이 줄어듦.
+        // mountLocalPosition/mountDef.sizeScale은 "월드 기준" 값으로 다루고 싶어서, 부모 스케일로 나눠 상쇄함 -
+        // 그래야 부르기 상태(월드 스케일 그대로)와 탑승 상태의 겉보기 위치/크기가 항상 똑같아 보임
         transform.SetParent(playerTransform, false);
-        transform.localPosition = mountLocalPosition;
-        transform.localRotation = Quaternion.Euler(mountLocalEulerAngles);
+        Vector3 parentScale = playerTransform.lossyScale;
+        Vector3 mountLocalPosition = mountDef.mountLocalPosition;
+        transform.localPosition = new Vector3(
+            mountLocalPosition.x / Mathf.Max(0.0001f, parentScale.x),
+            mountLocalPosition.y / Mathf.Max(0.0001f, parentScale.y),
+            mountLocalPosition.z / Mathf.Max(0.0001f, parentScale.z));
+        transform.localRotation = Quaternion.Euler(mountDef.mountLocalEulerAngles);
+        // ApplyVisual과 동일한 이유로, 전용 모델이 있으면 sizeScale을 또 곱하지 않음(중복 확대 방지) -
+        // 그래야 탑승 중 크기가 부르기 상태(ApplyVisual)와 똑같이 보임
+        bool mountedUsesDedicatedModel = GetDedicatedModel(mountDef.id) != null;
+        float effectiveSizeScale = mountedUsesDedicatedModel ? 1f : mountDef.sizeScale;
+        transform.localScale = new Vector3(
+            effectiveSizeScale / Mathf.Max(0.0001f, parentScale.x),
+            effectiveSizeScale / Mathf.Max(0.0001f, parentScale.y),
+            effectiveSizeScale / Mathf.Max(0.0001f, parentScale.z));
 
         // 탑승 중에는 트리거가 계속 겹쳐서 불필요한 이벤트가 나지 않도록 꺼둠
         if (col != null)
