@@ -22,11 +22,12 @@ public static class TownGenerator
     private const float SidewalkWidth = 3.5f;
     private const float MainRoadExtraWidth = 3f; // 메인 도로는 차도를 이만큼 더 넓게 (그만큼 인도가 살짝 좁아짐) - 차도 폭과 함께 2배로
     private const int MainRoadGapIndex = GridSize / 2; // 이 가로줄을 참고 지도의 큰 도로(32번 도로 느낌)로 강조
+    // 참고 지도(네이버 지도 캡쳐)처럼 큰 길이 한 방향만이 아니라 십자로 교차하는 느낌을 주기 위해 세로줄 하나도 메인 도로로 강조
+    private const int MainColGapIndex = GridSize / 2;
 
-    // 일단 도로를 전부 반듯한 격자로 만들기 위해 흔들림(warp)을 꺼둠 - 0으로 두면 모든 교차점이 정확히 격자 위치에 놓여
-    // 도로가 꺾이지 않고 전부 직선이 됨. 나중에 다시 자연스러운 느낌을 원하면 이 값을 0보다 크게 되돌리면 됨
-    private const float WarpAmplitude = 0f;      // 격자 교차점을 얼마나 흔들어서 도로를 구불구불하게 만들지(미터)
-    private const float BlockRotationRange = 0f; // 블록 전체를 얼마나 회전시켜서 불규칙한 모양으로 보이게 할지(도) - 도로와 함께 반듯하게
+    // 실제 마을처럼 자연스럽고 인위적이지 않게 보이도록 격자 교차점을 살짝 흔들고 블록도 살짝 돌림
+    private const float WarpAmplitude = 2f;      // 격자 교차점을 얼마나 흔들어서 도로를 구불구불하게 만들지(미터)
+    private const float BlockRotationRange = 8f; // 블록 전체를 얼마나 회전시켜서 불규칙한 모양으로 보이게 할지(도)
 
     private const float RoadThickness = 0.06f; // 연석/중앙선/횡단보도가 바닥 위로 얼마나 떠서 그려질지 기준값
 
@@ -38,35 +39,71 @@ public static class TownGenerator
     // 도로/차선/인도/연석이 교차로에서 서로 겹쳐서 깜빡이는 문제 방지용 -
     // 모든 도로를 교차점(node)까지 꽉 채우는 대신, 각 교차점에서 도로 폭만큼 안쪽으로 잘라서 짧게 만들고
     // 교차로 자리는 별도의 사각형 하나(RoadFill)로 통째로 채움 - 여러 개가 겹치는 대신 이음새 없이 붙게 됨
-    // (지금은 도로 흔들림(WarpAmplitude)을 꺼놔서 각도 어긋남 걱정이 없으므로 여유를 최소한으로 줄임 -
-    // 여유가 클수록 RoadFill이 실제 도로 폭보다 쓸데없이 넓어져서 연석이 안쪽으로 들어가 보이는 틈이 생겼었음)
-    private const float IntersectionFillMargin = 0.2f;
+    // 도로 흔들림(WarpAmplitude)이 켜져 있어서 교차점에 들어오는 각도가 조금씩 어긋나므로,
+    // 그 어긋남을 덮을 만큼 여유를 넉넉히 둠 (너무 크면 RoadFill이 쓸데없이 넓어져 연석이 안쪽으로 들어가 보임)
+    private const float IntersectionFillMargin = 1.2f;
 
     // 참고 영상 스타일 - 메인 도로 중앙선은 얇은 노란선 한 줄 대신 두 줄을 나란히 그림(중앙분리선 느낌)
     private const float CenterLineWidth = 0.18f;
     private const float DoubleLineGap = 0.25f; // 이중선 두 줄 사이 간격
 
     private static readonly Vector2Int ParkCell = new Vector2Int(1, 2);  // 공원 블록 (참고 지도의 갈마공원 느낌)
+    // 참고 지도(네이버 지도 캡쳐)에 작은 공원 두 개가 대각선 반대쪽 구석에 있는 걸 보고 하나 더 추가함
+    private static readonly Vector2Int ParkCell2 = new Vector2Int(5, 1);
     private static readonly Vector2Int PondCell = new Vector2Int(5, 4); // 연못 블록 (참고 지도의 월평공원 호수 느낌)
 
-    // 실제 지도(참고 이미지) 느낌 - 밝은 인도 바닥 위에 어두운 차도가 지나가고, 베이지/황토색 건물들이 촘촘하게 들어참
+    // 귀여운 토이 마을 컨셉 - Varco3D로 만든 건물들(밝고 채도 높은 파스텔톤)과 어울리도록
+    // 예전의 칙칙한 베이지/회색 팔레트 대신 화사한 파스텔 색감으로 바꿈
     // 인도는 별도 오브젝트 없이 이 Ground 바닥이 그대로 인도 역할을 함(균일한 색 하나로 이어짐)
-    private static readonly Color GroundColor = new Color(0.90f, 0.88f, 0.84f);   // 인도/보도
-    private static readonly Color RoadColor = new Color(0.30f, 0.30f, 0.32f);     // 일반 차도 아스팔트
-    private static readonly Color MainRoadColor = new Color(0.24f, 0.24f, 0.26f); // 메인 도로 (더 진하고 넓게)
-    private static readonly Color LineWhite = new Color(0.92f, 0.92f, 0.90f);
-    private static readonly Color LineYellow = new Color(0.95f, 0.78f, 0.15f);
-    private static readonly Color ParkColor = new Color(0.42f, 0.62f, 0.35f);
-    private static readonly Color WaterColor = new Color(0.35f, 0.55f, 0.75f);
+    private static readonly Color GroundColor = new Color(0.97f, 0.93f, 0.82f);   // 인도/보도 - 따뜻한 크림색
+    private static readonly Color RoadColor = new Color(0.36f, 0.32f, 0.48f);     // 일반 차도 - 톤 다운된 보라빛 남색(토이 아스팔트 느낌)
+    private static readonly Color MainRoadColor = new Color(0.28f, 0.25f, 0.40f); // 메인 도로 (더 진하고 넓게)
+    private static readonly Color LineWhite = new Color(0.97f, 0.97f, 0.95f);
+    private static readonly Color LineYellow = new Color(1.0f, 0.82f, 0.20f);
+    private static readonly Color ParkColor = new Color(0.55f, 0.82f, 0.42f);     // 화사한 잔디색
+    private static readonly Color WaterColor = new Color(0.40f, 0.80f, 0.88f);    // 밝은 청록색 연못
 
+    // 아직 Varco3D 모델로 안 바뀐 나머지 큐브 건물들도 눈에 튀지 않도록 화사한 파스텔톤으로
     private static readonly Color[] BuildingPalette = new Color[]
     {
-        new Color(0.82f, 0.73f, 0.60f), // 베이지
-        new Color(0.78f, 0.68f, 0.55f), // 짙은 베이지
-        new Color(0.86f, 0.80f, 0.70f), // 밝은 회베이지
-        new Color(0.74f, 0.66f, 0.60f), // 회갈색
-        new Color(0.80f, 0.76f, 0.72f), // 연회색
+        new Color(1.00f, 0.78f, 0.80f), // 파스텔 핑크
+        new Color(1.00f, 0.88f, 0.55f), // 파스텔 옐로
+        new Color(0.65f, 0.85f, 1.00f), // 파스텔 하늘색
+        new Color(0.70f, 0.92f, 0.75f), // 파스텔 민트
+        new Color(0.90f, 0.75f, 1.00f), // 파스텔 라벤더
     };
+
+    // 공원 나무 캐노피 색 - 여러 종류를 섞어서 단조롭지 않게 함
+    private static readonly Color[] LeafPalette = new Color[]
+    {
+        new Color(0.45f, 0.78f, 0.35f),
+        new Color(0.55f, 0.82f, 0.40f),
+        new Color(0.35f, 0.70f, 0.45f),
+    };
+
+    // Varco3D로 만든 실제 건물 3D 모델 - 아직 테스트 단계라 마을 전체가 아니라 처음 만나는 건물 슬롯 5개에만 적용함
+    // (BuildBlockCluster의 builtRealBuildingCount 참고). 스케일/회전은 탈것 모델과 같은 방식(눈으로 보고 조정)이라
+    // 아직 정확히 맞춰지지 않았을 수 있음 - Generate Town 실행 후 직접 확인하면서 조정할 것.
+    private struct BuildingModelDef
+    {
+        public string Name;
+        public string AssetPath;
+        public float Scale;
+        public Vector3 EulerAngles;
+    }
+
+    private static readonly BuildingModelDef[] BuildingModels = new BuildingModelDef[]
+    {
+        new BuildingModelDef { Name = "Shop", AssetPath = "Assets/_Project/Art/Buildings/Shop.fbx", Scale = 6f, EulerAngles = new Vector3(-90f, 0f, 0f) },
+        new BuildingModelDef { Name = "Apartment", AssetPath = "Assets/_Project/Art/Buildings/Apartment.fbx", Scale = 6f, EulerAngles = new Vector3(-90f, 0f, 0f) },
+        new BuildingModelDef { Name = "Office", AssetPath = "Assets/_Project/Art/Buildings/Office.fbx", Scale = 6f, EulerAngles = new Vector3(-90f, 0f, 0f) },
+        new BuildingModelDef { Name = "Cafe", AssetPath = "Assets/_Project/Art/Buildings/Cafe.fbx", Scale = 6f, EulerAngles = new Vector3(-90f, 0f, 0f) },
+        new BuildingModelDef { Name = "Landmark", AssetPath = "Assets/_Project/Art/Buildings/Landmark.fbx", Scale = 7f, EulerAngles = new Vector3(-90f, 0f, 0f) },
+    };
+
+    // BuildTownGrid 시작할 때 0으로 리셋됨 - 건물 슬롯을 만날 때마다 늘어나며, BuildingModels.Length(5)개까지만
+    // 실제 3D 모델로 교체하고 그 이후는 원래대로 색깔 큐브로 채움
+    private static int builtRealBuildingCount;
 
     [MenuItem("RiderGame/Generate Town + Setup Scene")]
     public static void GenerateTown()
@@ -408,6 +445,7 @@ public static class TownGenerator
 
     private static void BuildTownGrid(Transform townParent, Vector3[,] nodes)
     {
+        builtRealBuildingCount = 0;
         int centerIndex = GridSize / 2;
 
         for (int row = 0; row < GridSize; row++)
@@ -429,7 +467,7 @@ public static class TownGenerator
 
                 Vector2Int cell = new Vector2Int(row, col);
 
-                if (cell == ParkCell)
+                if (cell == ParkCell || cell == ParkCell2)
                 {
                     BuildParkBlock(townParent, blockCenter);
                     continue;
@@ -444,7 +482,7 @@ public static class TownGenerator
                 string label = row + "_" + col;
 
                 // 블록 하나를 실제 지도처럼 여러 채의 작은 건물로 쪼개서 배치 (사이사이 골목 틈도 생김)
-                BuildBlockCluster(townParent, blockCenter, label);
+                BuildBlockCluster(townParent, blockCenter, label, row, col);
 
                 // 모든 블록이 배달 스팟 후보가 됨 - 실제 픽업/배달 지정은 DeliveryJobManager가 플레이 중 랜덤으로 함
                 AttachDeliverySpot(blockCenter, townParent, label);
@@ -501,9 +539,46 @@ public static class TownGenerator
         }
     }
 
-    private static void BuildBlockCluster(Transform townParent, Vector3 blockCenter, string label)
+    // 격자 중심(번화가)에 가까운 블록일수록 4분할(밀집) 템플릿 비중을 높이고, 외곽(주택가)으로 갈수록
+    // 큰 건물 1채 템플릿 비중을 높여서 "건물이 모여있는 곳 / 한적한 주택가"가 자연스럽게 구분되어 보이게 함.
+    // 여기에 참고 지도(네이버 지도 캡쳐)의 비대칭 느낌(왼쪽 위는 작은 상가가 빽빽하고, 오른쪽 아래로 갈수록
+    // 큼직한 아파트 단지 위주)을 흉내내려고 대각선 방향 기울기도 절반 정도 섞음
+    private static int PickTemplateForBlock(int row, int col)
     {
-        int template = Random.Range(0, 4);
+        int centerIndex = GridSize / 2;
+        float radialDist = Mathf.Max(Mathf.Abs(row - centerIndex), Mathf.Abs(col - centerIndex));
+        float radialT = Mathf.Clamp01(radialDist / Mathf.Max(1f, (float)centerIndex)); // 0=도심, 1=외곽
+
+        float diagT = Mathf.Clamp01((row + col) / (2f * Mathf.Max(1f, GridSize - 1))); // 0=왼쪽위(상가 밀집), 1=오른쪽아래(큰 단지)
+
+        float t = Mathf.Clamp01(radialT * 0.5f + diagT * 0.5f);
+
+        float bigWeight = Mathf.Lerp(0.3f, 2.2f, t);   // template 0 - 큰 건물 하나
+        float splitWeight = 1f;                        // template 1, 2 - 2분할 (도심/외곽 상관없이 고정 비중)
+        float denseWeight = Mathf.Lerp(2.6f, 0.3f, t);  // template 3 - 4분할 밀집
+
+        float total = bigWeight + splitWeight * 2f + denseWeight;
+        float r = Random.Range(0f, total);
+        if (r < bigWeight)
+        {
+            return 0;
+        }
+        r -= bigWeight;
+        if (r < splitWeight)
+        {
+            return 1;
+        }
+        r -= splitWeight;
+        if (r < splitWeight)
+        {
+            return 2;
+        }
+        return 3;
+    }
+
+    private static void BuildBlockCluster(Transform townParent, Vector3 blockCenter, string label, int row, int col)
+    {
+        int template = PickTemplateForBlock(row, col);
         BuildingFootprint[] footprints = GetTemplateFootprints(template);
 
         // 블록 전체를 살짝 회전시켜서 격자에 딱 맞아떨어지지 않는 불규칙한 느낌을 줌
@@ -524,18 +599,73 @@ public static class TownGenerator
 
             Vector3 localOffset = new Vector3((fp.OffsetX + jitterX) * BlockSize, 0f, (fp.OffsetZ + jitterZ) * BlockSize);
             Vector3 rotatedOffset = blockRotation * localOffset;
+            Vector3 groundPosition = blockCenter + rotatedOffset;
+
+            if (builtRealBuildingCount < BuildingModels.Length)
+            {
+                BuildingModelDef def = BuildingModels[builtRealBuildingCount];
+                builtRealBuildingCount++;
+                SpawnBuildingModel(townParent, "Building_" + label + "_" + i, def, groundPosition, blockRotation);
+                continue;
+            }
+
             float height = Random.Range(3f, 14f);
 
             GameObject building = GameObject.CreatePrimitive(PrimitiveType.Cube);
             building.name = "Building_" + label + "_" + i;
             building.transform.SetParent(townParent);
-            building.transform.position = blockCenter + rotatedOffset + new Vector3(0f, height * 0.5f, 0f);
+            building.transform.position = groundPosition + new Vector3(0f, height * 0.5f, 0f);
             building.transform.rotation = blockRotation;
             building.transform.localScale = new Vector3(width, height, depth);
 
             ApplyColor(building, RandomBuildingColor());
             MarkNavStatic(building);
         }
+    }
+
+    // Varco3D 실제 건물 모델을 지정된 위치에 배치 - 탈것의 SpawnVehicleModel과 같은 패턴(피벗/스케일을
+    // 눈으로 보고 조정)이지만, 탈것과 달리 항상 켜져 있고 플레이어가 부딪히도록 콜라이더를 렌더러 바운즈로 붙여줌
+    private static void SpawnBuildingModel(Transform parent, string childName, BuildingModelDef def, Vector3 groundPosition, Quaternion blockRotation)
+    {
+        GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(def.AssetPath);
+        if (asset == null)
+        {
+            Debug.LogWarning(childName + "(" + def.Name + ") 3D 모델을 못 찾았어요(" + def.AssetPath + "). Unity가 아직 임포트하지 않았을 수 있으니, 한 번 더 Generate Town을 실행해보세요.");
+            return;
+        }
+
+        GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(asset, parent);
+        instance.name = childName + "_" + def.Name;
+        instance.transform.position = groundPosition;
+        instance.transform.rotation = blockRotation * Quaternion.Euler(def.EulerAngles);
+        instance.transform.localScale = Vector3.one * def.Scale;
+
+        Renderer[] renderers = instance.GetComponentsInChildren<Renderer>();
+        if (renderers.Length > 0)
+        {
+            Bounds bounds = renderers[0].bounds;
+            for (int r = 1; r < renderers.Length; r++)
+            {
+                bounds.Encapsulate(renderers[r].bounds);
+            }
+
+            // Varco3D 모델은 피벗이 세로 중앙 부근에 있는 경우가 많아서(탈것 모델도 동일한 문제였음),
+            // 그대로 두면 건물 절반이 땅 밑에 파묻힘 - 렌더러 바운즈의 바닥(min.y)이 groundPosition.y에
+            // 오도록 위로 띄워서 항상 바닥에 발이 닿게 함
+            float sinkOffset = groundPosition.y - bounds.min.y;
+            instance.transform.position += new Vector3(0f, sinkOffset, 0f);
+            bounds.center += new Vector3(0f, sinkOffset, 0f);
+
+            Vector3 lossyScale = instance.transform.lossyScale;
+            BoxCollider collider = instance.AddComponent<BoxCollider>();
+            collider.center = instance.transform.InverseTransformPoint(bounds.center);
+            collider.size = new Vector3(
+                bounds.size.x / Mathf.Max(0.0001f, lossyScale.x),
+                bounds.size.y / Mathf.Max(0.0001f, lossyScale.y),
+                bounds.size.z / Mathf.Max(0.0001f, lossyScale.z));
+        }
+
+        MarkNavStatic(instance);
     }
 
     private static Color RandomBuildingColor()
@@ -577,8 +707,8 @@ public static class TownGenerator
         GameObject trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         trunk.name = "TreeTrunk";
         trunk.transform.SetParent(parent);
-        trunk.transform.position = pos + new Vector3(0f, 0.75f, 0f);
-        trunk.transform.localScale = new Vector3(0.3f, 0.75f, 0.3f);
+        trunk.transform.position = pos + new Vector3(0f, 0.7f, 0f);
+        trunk.transform.localScale = new Vector3(0.3f, 0.7f, 0.3f);
 
         Collider trunkCol = trunk.GetComponent<Collider>();
         if (trunkCol != null)
@@ -586,13 +716,22 @@ public static class TownGenerator
             Object.DestroyImmediate(trunkCol);
         }
 
-        ApplyColor(trunk, new Color(0.4f, 0.28f, 0.18f));
+        ApplyColor(trunk, new Color(0.55f, 0.38f, 0.24f));
 
+        // 뭉게구름 같은 토이 스타일 나무 - 구 하나 대신 크기가 다른 구 3개를 뭉쳐서 통통한 뭉게뭉게 캐노피를 만듦
+        Color leafColor = LeafPalette[Random.Range(0, LeafPalette.Length)];
+        BuildLeafBlob(parent, pos + new Vector3(0f, 1.85f, 0f), 1.5f, leafColor);
+        BuildLeafBlob(parent, pos + new Vector3(0.55f, 1.55f, 0.15f), 1.0f, leafColor);
+        BuildLeafBlob(parent, pos + new Vector3(-0.5f, 1.6f, -0.25f), 1.05f, leafColor);
+    }
+
+    private static void BuildLeafBlob(Transform parent, Vector3 position, float scale, Color color)
+    {
         GameObject leaves = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         leaves.name = "TreeLeaves";
         leaves.transform.SetParent(parent);
-        leaves.transform.position = pos + new Vector3(0f, 1.9f, 0f);
-        leaves.transform.localScale = new Vector3(1.6f, 1.6f, 1.6f);
+        leaves.transform.position = position;
+        leaves.transform.localScale = Vector3.one * scale;
 
         Collider leavesCol = leaves.GetComponent<Collider>();
         if (leavesCol != null)
@@ -600,7 +739,7 @@ public static class TownGenerator
             Object.DestroyImmediate(leavesCol);
         }
 
-        ApplyColor(leaves, new Color(0.25f, 0.5f, 0.22f));
+        ApplyColor(leaves, color);
     }
 
     private static void BuildPondBlock(Transform parent, Vector3 blockCenter)
@@ -627,26 +766,29 @@ public static class TownGenerator
     {
         // 가로 방향 도로 (동서) - row 하나가 도로 한 줄
         // 도로/차선/인도/연석 전체를 교차점 자리만큼 짧게 잘라서, 교차로에서는 도로끼리 겹치지 않고
-        // 대신 BuildIntersectionFills가 채워주는 사각형 하나에 서로 이어붙게 함
+        // 대신 BuildIntersectionFills가 채워주는 사각형 하나에 서로 이어붙게 함.
+        // 메인 세로줄(MainColGapIndex)도 생겨서 끝마다 만나는 세로줄이 메인인지가 다를 수 있으므로 끝마다 따로 계산함
         for (int row = 0; row <= GridSize; row++)
         {
-            bool isMain = (row == MainRoadGapIndex);
-            float hTrim = GetNodeTrim(isMain); // 가로 도로는 양 끝 모두 같은 줄(row) 소속이라 트림 값이 같음
+            bool isMainRow = (row == MainRoadGapIndex);
             for (int col = 0; col < GridSize; col++)
             {
-                BuildRoadSegment(townParent, nodes[col, row], nodes[col + 1, row], isMain, "H" + row + "_" + col, hTrim, hTrim);
+                float trimFrom = GetNodeTrim(isMainRow, col == MainColGapIndex);
+                float trimTo = GetNodeTrim(isMainRow, col + 1 == MainColGapIndex);
+                BuildRoadSegment(townParent, nodes[col, row], nodes[col + 1, row], isMainRow, "H" + row + "_" + col, trimFrom, trimTo);
             }
         }
 
         // 세로 방향 도로 (남북) - col 하나가 도로 한 줄
-        // 양 끝(row, row+1)이 각각 메인 도로 줄인지 아닌지에 따라 그 교차점의 트림 크기가 다르므로 끝마다 따로 계산
+        // 양 끝(row, row+1)이 각각 메인 가로줄인지 아닌지에 따라 그 교차점의 트림 크기가 다르므로 끝마다 따로 계산
         for (int col = 0; col <= GridSize; col++)
         {
+            bool isMainCol = (col == MainColGapIndex);
             for (int row = 0; row < GridSize; row++)
             {
-                float trimFrom = GetNodeTrim(row == MainRoadGapIndex);
-                float trimTo = GetNodeTrim(row + 1 == MainRoadGapIndex);
-                BuildRoadSegment(townParent, nodes[col, row], nodes[col, row + 1], false, "V" + col + "_" + row, trimFrom, trimTo);
+                float trimFrom = GetNodeTrim(row == MainRoadGapIndex, isMainCol);
+                float trimTo = GetNodeTrim(row + 1 == MainRoadGapIndex, isMainCol);
+                BuildRoadSegment(townParent, nodes[col, row], nodes[col, row + 1], isMainCol, "V" + col + "_" + row, trimFrom, trimTo);
             }
         }
     }
@@ -670,31 +812,46 @@ public static class TownGenerator
         float length = Mathf.Max(0.3f, fullLength - trimFrom - trimTo);
         Vector3 mid = fullMid + dirUnit * ((trimFrom - trimTo) * 0.5f);
 
-        // 차도 폭 - 인도(SidewalkWidth) 양쪽을 뺀 나머지가 차도. 메인 도로는 그만큼 차도를 더 넓게 씀
+        // 차도 폭 - 인도(SidewalkWidth) 양쪽을 뺀 나머지가 차도. 메인 도로는 그만큼 차도를 더 넓게 씀.
+        // 실제 마을처럼 구간마다 넓은 길/좁은 골목이 섞이도록, 메인 도로가 아닌 구간은 폭을 랜덤하게 흔듦
+        // (교차로 트림/채우기는 그대로 GetRoadWidth(isMain) 기준 고정폭을 쓰므로 겹침/틈 걱정 없이 항상 그 안쪽에서만 좁아지거나 넓어짐)
         float roadWidth = GetRoadWidth(isMain);
         float thickness = RoadThickness;
+        bool isAlley = false;
+
+        if (!isMain)
+        {
+            float widthFactor = Random.Range(0.5f, 1.25f);
+            isAlley = widthFactor < 0.65f;
+            roadWidth = Mathf.Max(3f, roadWidth * widthFactor);
+        }
 
         // 도로 자체는 별도 오브젝트가 아니라 하나로 합쳐지는 지면 메시(Ground)에 사각형 하나로 얹음 -
         // 그래서 여기선 위치/색만 큐에 쌓아두고, 실제 오브젝트는 FinalizeGroundMesh에서 한 번에 만들어짐
         AddGroundQuad(new Vector3(mid.x, GroundLayerY, mid.z), rotation, roadWidth, length, isMain ? MainRoadColor : RoadColor);
 
-        // 중앙선(차선) - 메인 도로는 얇은 노란선 두 줄, 일반 도로는 흰선 한 줄. 실제 교차로처럼 중앙선은 교차로 안쪽까지는 안 그림
-        BuildCenterLine(parent, mid, rotation, length, thickness, isMain, label);
+        // 중앙선(차선) - 메인 도로는 얇은 노란선 두 줄, 일반 도로는 흰선 한 줄. 실제 교차로처럼 중앙선은 교차로 안쪽까지는 안 그림.
+        // 폭이 아주 좁은 골목은 차선 표시가 없는 게 더 자연스러워서 아예 생략함
+        if (!isAlley)
+        {
+            BuildCenterLine(parent, mid, rotation, length, thickness, isMain, label);
+        }
     }
 
     // 교차점 하나를 통째로 덮는 사각형 크기 - 이 자리에서 만나는 가로/세로 도로 폭 중 더 넓은 쪽 기준으로,
-    // 흔들린(warp) 도로가 살짝 다른 각도로 들어와도 틈 없이 덮이도록 여유(IntersectionFillMargin)를 더함
-    private static float GetIntersectionFillSize(bool isMainRow)
+    // 흔들린(warp) 도로가 살짝 다른 각도로 들어와도 틈 없이 덮이도록 여유(IntersectionFillMargin)를 더함.
+    // 메인 가로줄/세로줄이 둘 다 생겨서(십자 교차) 이 교차점이 어느 쪽 메인인지 각각 따로 받음
+    private static float GetIntersectionFillSize(bool isMainRow, bool isMainCol)
     {
         float hWidth = GetRoadWidth(isMainRow);
-        float vWidth = GetRoadWidth(false);
+        float vWidth = GetRoadWidth(isMainCol);
         return Mathf.Max(hWidth, vWidth) + IntersectionFillMargin;
     }
 
     // 이 교차점에 붙는 도로/차선/인도/연석이 양 끝에서 잘려나가야 하는 길이 (교차로 사각형의 절반)
-    private static float GetNodeTrim(bool isMainRow)
+    private static float GetNodeTrim(bool isMainRow, bool isMainCol)
     {
-        return GetIntersectionFillSize(isMainRow) * 0.5f;
+        return GetIntersectionFillSize(isMainRow, isMainCol) * 0.5f;
     }
 
     // 각 교차점을 도로색 사각형 하나로 통째로 채움 - 다른 도로 조각과 겹치는 대신, 잘려나간 도로들이 이 사각형에
@@ -704,12 +861,13 @@ public static class TownGenerator
         for (int row = 0; row <= GridSize; row++)
         {
             bool isMainRow = (row == MainRoadGapIndex);
-            float fillSize = GetIntersectionFillSize(isMainRow);
 
             for (int col = 0; col <= GridSize; col++)
             {
+                bool isMainCol = (col == MainColGapIndex);
+                float fillSize = GetIntersectionFillSize(isMainRow, isMainCol);
                 Vector3 node = nodes[col, row];
-                AddGroundQuad(new Vector3(node.x, GroundLayerY, node.z), Quaternion.identity, fillSize, fillSize, isMainRow ? MainRoadColor : RoadColor);
+                AddGroundQuad(new Vector3(node.x, GroundLayerY, node.z), Quaternion.identity, fillSize, fillSize, (isMainRow || isMainCol) ? MainRoadColor : RoadColor);
             }
         }
     }
@@ -767,7 +925,7 @@ public static class TownGenerator
         // 시작 위치도 도로 종류와 상관없이 완전히 고정값으로 통일함 - 메인 도로 쪽 교차로 사각형(RoadFill)이
         // 가장 크므로, 그 기준(isMainRow: true)으로 한 번만 계산해서 어떤 교차로에서도 절대 겹치지 않게 함.
         // (전에는 행마다 다시 계산해서, 같은 col이라도 메인/일반 행에 따라 노드 기준 오프셋이 달라져 있었음)
-        float edgeDistance = GetNodeTrim(true) + CrosswalkStartGap;
+        float edgeDistance = GetNodeTrim(true, true) + CrosswalkStartGap;
 
         for (int row = 0; row <= GridSize; row++)
         {
