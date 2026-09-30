@@ -109,12 +109,29 @@ public class DeliveryJobManager : MonoBehaviour
         spots.Remove(spot);
     }
 
-    // 새 배달 요청을 랜덤으로 고름 - 아직 수락 전이라 마커는 표시하지 않음
+    // 새 배달 요청을 랜덤으로 고름 - 아직 수락 전이라 마커는 표시하지 않음.
+    // 픽업은 가게(Shop) 중에서만, 배달지는 빌라/아파트(Residential) 중에서만 골라서 "가게에서 받아서
+    // 집으로 배달" 느낌이 나게 함 - Other로 분류된 건물(병원/사무실 등)은 둘 다에서 제외됨
     public void ProposeNewJob()
     {
-        if (spots.Count < 2)
+        List<DeliverySpot> shopSpots = new List<DeliverySpot>();
+        List<DeliverySpot> residentialSpots = new List<DeliverySpot>();
+        foreach (DeliverySpot spot in spots)
         {
-            Debug.LogWarning("배달 스팟이 2개 미만이라 새 배달을 제안할 수 없습니다.");
+            if (spot.Category == DeliverySpot.SpotCategory.Shop)
+            {
+                shopSpots.Add(spot);
+            }
+            else if (spot.Category == DeliverySpot.SpotCategory.Residential)
+            {
+                residentialSpots.Add(spot);
+            }
+        }
+
+        if (shopSpots.Count == 0 || residentialSpots.Count == 0)
+        {
+            Debug.LogWarning("가게(Shop) 또는 빌라/아파트(Residential) 스팟이 없어서 새 배달을 제안할 수 없습니다. (Shop: "
+                + shopSpots.Count + ", Residential: " + residentialSpots.Count + ")");
             return;
         }
 
@@ -127,15 +144,8 @@ public class DeliveryJobManager : MonoBehaviour
             CurrentDeliverySpot.SetRole(DeliverySpot.SpotRole.Inactive);
         }
 
-        int pickupIndex = Random.Range(0, spots.Count);
-        int deliveryIndex;
-        do
-        {
-            deliveryIndex = Random.Range(0, spots.Count);
-        } while (deliveryIndex == pickupIndex);
-
-        CurrentPickupSpot = spots[pickupIndex];
-        CurrentDeliverySpot = spots[deliveryIndex];
+        CurrentPickupSpot = shopSpots[Random.Range(0, shopSpots.Count)];
+        CurrentDeliverySpot = residentialSpots[Random.Range(0, residentialSpots.Count)];
         IsUrgent = Random.value < urgentChance;
 
         State = JobState.Proposed;

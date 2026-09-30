@@ -7,6 +7,23 @@ public class DeliverySpot : MonoBehaviour
 {
     public enum SpotRole { Inactive, Pickup, Delivery }
 
+    // 콜을 "가게에서 받아서 빌라/아파트로 배달"하는 느낌을 내기 위한 분류 - DeliveryJobManager가
+    // 픽업은 Shop 중에서만, 배달지는 Residential 중에서만 고르는 데 씀. 기본값 Other는 어느 쪽에도 안 씀
+    public enum SpotCategory { Other, Shop, Residential }
+
+    // 그냥 프로퍼티(get; private set;)로 두면 유니티가 직렬화를 안 해서, Play를 눌러 도메인이
+    // 리로드될 때(기본 설정) 에디터에서 미리 지정해둔 분류가 전부 Other로 초기화돼버렸음(그래서
+    // "가게가 없다"는 오류가 났던 것) - [SerializeField]로 실제 필드에 저장해서 리로드에도 살아남게 함
+    [SerializeField]
+    private SpotCategory category = SpotCategory.Other;
+
+    public SpotCategory Category => category;
+
+    public void SetCategory(SpotCategory newCategory)
+    {
+        category = newCategory;
+    }
+
     [Header("픽업 홀드 시간(초)")]
     public float holdDuration = 3f;
 

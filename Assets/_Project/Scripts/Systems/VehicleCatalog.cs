@@ -33,11 +33,21 @@ public static class VehicleCatalog
         new VehicleDefinition { id = "kickboard", displayName = "킥보드", price = 8000, walkSpeed = 8f, runSpeed = 11f, sizeScale = 1f, bodyColor = new Color(1f, 0.6f, 0.1f), needsFuel = false,
             mountLocalPosition = new Vector3(0f, -0.346f, 0f), mountLocalEulerAngles = Vector3.zero },
         // 스쿠터 - 실제 배달 라이더들이 가장 많이 타는 탈것이라 여기 추가함. 연료를 쓰는 것 중엔 가장 저렴하고 연료도 아낌
-        new VehicleDefinition { id = "scooter", displayName = "스쿠터", price = 15000, walkSpeed = 9.5f, runSpeed = 14f, sizeScale = 1.15f, bodyColor = new Color(0.15f, 0.75f, 0.65f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.3f },
-        new VehicleDefinition { id = "motorcycle", displayName = "오토바이", price = 25000, walkSpeed = 11f, runSpeed = 16f, sizeScale = 1.3f, bodyColor = new Color(0.85f, 0.15f, 0.15f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.5f },
-        new VehicleDefinition { id = "car", displayName = "자동차", price = 60000, walkSpeed = 14.5f, runSpeed = 21f, sizeScale = 1.8f, bodyColor = new Color(0.2f, 0.45f, 0.9f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.4f },
+        // 전용 모델 그대로(기본값 -0.35) 태워보니 자연스러웠음 - 명시적으로 남겨서 다른 탈것들과 같은 방식으로 관리
+        new VehicleDefinition { id = "scooter", displayName = "스쿠터", price = 15000, walkSpeed = 9.5f, runSpeed = 14f, sizeScale = 1.15f, bodyColor = new Color(0.15f, 0.75f, 0.65f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.3f,
+            mountLocalPosition = new Vector3(0f, -0.35f, 0.2f), mountLocalEulerAngles = Vector3.zero },
+        // 기본값(-0.35)을 그대로 쓰면 캐릭터가 오토바이 몸체 안에 파묻혀 보여서, 더 아래로(-0.55) 내려서
+        // 캐릭터가 몸체 위에 걸터앉은 것처럼 보이게 맞춤
+        new VehicleDefinition { id = "motorcycle", displayName = "오토바이", price = 25000, walkSpeed = 11f, runSpeed = 16f, sizeScale = 1.3f, bodyColor = new Color(0.85f, 0.15f, 0.15f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.5f,
+            mountLocalPosition = new Vector3(0f, -0.55f, 0.2f), mountLocalEulerAngles = Vector3.zero },
+        // 자동차는 완전히 막힌 차체라 캐릭터가 어차피 거의 안 보임(문제될 정도로 튀어나오진 않아서 기본값 유지)
+        new VehicleDefinition { id = "car", displayName = "자동차", price = 60000, walkSpeed = 14.5f, runSpeed = 21f, sizeScale = 1.8f, bodyColor = new Color(0.2f, 0.45f, 0.9f), needsFuel = true, maxFuel = 100f, fuelDrainPerSecond = 0.4f,
+            mountLocalPosition = new Vector3(0f, -0.35f, 0.2f), mountLocalEulerAngles = Vector3.zero },
         // 스포츠카 - 최고급 탈것. 제일 빠르지만 비싸고 연료도 제일 빨리 닳음(작은 연료탱크 + 높은 소모율)
-        new VehicleDefinition { id = "sportscar", displayName = "스포츠카", price = 120000, walkSpeed = 17f, runSpeed = 25f, sizeScale = 1.9f, bodyColor = new Color(1f, 0.85f, 0f), needsFuel = true, maxFuel = 80f, fuelDrainPerSecond = 0.6f },
+        // 기본값(-0.35)은 캐릭터가 차체 위로 붕 떠 보였음 - 좌석 쪽으로 낮춰서(-0.20) 차체 안에 앉은 것처럼 보이게 함
+        // (오픈탑이라 워낙 좌석이 낮고 차체가 막혀 있어서, 위로 안 뜨는 대신 살짝 가려 보이는 정도가 최선이었음)
+        new VehicleDefinition { id = "sportscar", displayName = "스포츠카", price = 120000, walkSpeed = 17f, runSpeed = 25f, sizeScale = 1.9f, bodyColor = new Color(1f, 0.85f, 0f), needsFuel = true, maxFuel = 80f, fuelDrainPerSecond = 0.6f,
+            mountLocalPosition = new Vector3(0f, -0.20f, 0.2f), mountLocalEulerAngles = Vector3.zero },
     };
 
     private static readonly HashSet<string> owned = new HashSet<string>();

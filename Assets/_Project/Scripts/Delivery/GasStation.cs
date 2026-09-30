@@ -12,12 +12,17 @@ public class GasStation : MonoBehaviour
     [Header("플레이어 태그")]
     public string playerTag = "Player";
 
-    [Header("플레이어 시작 위치 기준 배치 오프셋 (오른쪽 / 앞쪽)")]
+    [Header("플레이어 시작 위치 기준 배치 오프셋 (오른쪽 / 앞쪽) - useFixedPosition이 꺼져 있을 때만 씀")]
     public float spawnOffsetRight = 6f;
     public float spawnOffsetForward = 4f;
 
     [Header("바닥 높이 (Y) - 플레이어 피벗이 발밑이 아닐 수 있어서 Y는 따로 고정함")]
     public float groundY = 0f;
+
+    [Header("고정 위치 - 플레이어 스폰 위치에 상관없이 항상 이 자리(ReferenceMapPreview 기준 로컬 좌표)에 생성함")]
+    public bool useFixedPosition = true;
+    public Vector2 fixedLocalPosition = new Vector2(106f, -76f);
+    private const string ReferenceMapPreviewObjectName = "ReferenceMapPreview";
 
     [Header("주유 속도(연료 단위/초) / 가격(원/단위) - 결제 금액·소요 시간 계산에 쓰임")]
     public float refuelUnitsPerSecond = 25f;
@@ -38,12 +43,25 @@ public class GasStation : MonoBehaviour
     void Awake()
     {
         Instance = this;
-        PositionAtPlayerSpawn();
+        if (useFixedPosition)
+        {
+            PositionAtFixedSpot();
+        }
+        else
+        {
+            PositionAtPlayerSpawn();
+        }
 
         Collider col = GetComponent<Collider>();
         col.isTrigger = true;
 
-        BuildStation();
+        // Varco3D로 실제 주유소 모델(GasStationModel 자식)을 만들어 붙인 뒤에는, 이 자리를 채우려고
+        // 임시로 큐브/실린더로 직접 만들었던 캐노피/기둥/주유기/표지판(BuildStation)은 더 이상 필요 없음 -
+        // 그대로 두면 실제 모델 위에 겹쳐서 흰 기둥 같은 게 튀어나온 것처럼 보임
+        if (transform.Find("GasStationModel") == null)
+        {
+            BuildStation();
+        }
     }
 
     // Box Collider를 추가한 뒤 이 스크립트를 붙이면(또는 Reset) 주유 구역 크기를 건물 크기에 맞게 자동으로 잡아줌
@@ -58,6 +76,16 @@ public class GasStation : MonoBehaviour
             box.size = new Vector3(10f, 6f, 8f);
             box.center = new Vector3(0f, 3f, 0f);
         }
+    }
+
+    // 예전엔 플레이어 시작 위치 근처에 상대적으로 자리를 잡았는데, 마을이 바뀔 때마다 위치가 흔들리고
+    // 플레이어가 직접 조정해둔 마을 배치와도 안 맞아서 - 이제는 ReferenceMapPreview(현재 쓰는 마을) 기준
+    // 고정된 로컬 좌표(fixedLocalPosition)에 항상 같은 자리로 생성함
+    void PositionAtFixedSpot()
+    {
+        GameObject townRoot = GameObject.Find(ReferenceMapPreviewObjectName);
+        Vector3 origin = townRoot != null ? townRoot.transform.position : Vector3.zero;
+        transform.position = origin + new Vector3(fixedLocalPosition.x, groundY, fixedLocalPosition.y);
     }
 
     void PositionAtPlayerSpawn()
