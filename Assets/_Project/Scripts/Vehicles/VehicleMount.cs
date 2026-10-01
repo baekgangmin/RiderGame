@@ -214,6 +214,14 @@ public class VehicleMount : MonoBehaviour
             return;
         }
 
+        // 연료가 이미 0인 채로 탑승했다면(주유소까지 타고 가야 하는 상황) 강제로 안 내리게 함 -
+        // 원래는 탑승하자마자 다음 프레임에 "연료 없음"으로 판정돼서 바로 다시 내려졌고(연료를 넣으러
+        // 갈 수조차 없는 문제), 타는 중에 다 떨어진 경우에만(아래 로직) 자동으로 내리는 게 맞는 동작임
+        if (VehicleCatalog.GetFuel(def.id) <= 0f)
+        {
+            return;
+        }
+
         float rate = def.fuelDrainPerSecond;
         if (playerMovement != null && playerMovement.IsBoosting)
         {

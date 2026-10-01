@@ -321,6 +321,18 @@ public static class TownGenerator
         {
             managers.AddComponent<RouteGuide>();
         }
+        if (managers.GetComponent<EndingUI>() == null)
+        {
+            managers.AddComponent<EndingUI>();
+        }
+        if (managers.GetComponent<EndingManager>() == null)
+        {
+            managers.AddComponent<EndingManager>();
+        }
+        if (managers.GetComponent<StartUI>() == null)
+        {
+            managers.AddComponent<StartUI>();
+        }
     }
 
     // 도로/인도/교차로를 전부 따로따로 만들어 붙이면(조각마다 트림 계산이 살짝만 어긋나도) 틈이나 겹침(깜빡임)이

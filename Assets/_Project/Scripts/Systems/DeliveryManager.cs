@@ -12,6 +12,10 @@ public static class DeliveryManager
     public static int LastTip { get; private set; }
     public static bool LastWasLate { get; private set; }
 
+    // 엔딩 화면에 보여줄 누적 통계 - 완료한 배달 건수, 벌어들인 총액(지각 차감 전/늦어서 마이너스였던 것도 포함한 순수 합산)
+    public static int DeliveryCount { get; private set; }
+    public static int TotalEarned { get; private set; }
+
     private static float pickupTime;
     private static float timeLimit;
     private static int currentFare;
@@ -51,6 +55,8 @@ public static class DeliveryManager
         Money = startingMoney; // 테스트하기 편하게 시작 자금을 넉넉히 줌 - 나중에 밸런스 잡을 때 0으로 되돌리면 됨
         pickupTime = 0f;
         timeLimit = 0f;
+        DeliveryCount = 0;
+        TotalEarned = 0;
     }
 
     [Header("시작 자금 (테스트용)")]
@@ -103,6 +109,8 @@ public static class DeliveryManager
         else if (rating == 4) { tip = Random.Range(300, 900); }
 
         Money += payout + tip;
+        DeliveryCount++;
+        TotalEarned += payout + tip;
 
         LastRating = rating;
         LastPayout = payout;
